@@ -751,7 +751,9 @@ if barstate.islast and show_sess and auto_info
 // ── V253/V256-fix: дифференцированные буферы по фактической потребности ──
 // V253/V256-fix: дифференцированные буферы — const int литералы для max_bars_back()
 // Анкеры: форсируем расширение буфера для OHLCV
-// V273-fix: guard against bar_index < MAX_OFFSET on early bars to prevent runtime error
+// V273-fix: max_bars_back() allocates the buffer; force-reads inside guard are
+// redundant safety anchors that confirm the buffer is accessible at MAX_OFFSET.
+// On early bars (bar_index < MAX_OFFSET) the reads are skipped to avoid crash.
 max_bars_back(high,   MAX_BUFF)
 max_bars_back(low,    MAX_BUFF)
 max_bars_back(close,  MAX_BUFF)
@@ -4882,7 +4884,10 @@ f_mng() =>
                             fill_amt := math.max(0, math.min(high, fvg_top) - fvg_bot)
                         z.fvg_fill_pct := math.min(1.0, f_safe_div(fill_amt, fvg_size))
                         // Score penalty for filled FVGs (discrete tiers)
-                        // V273-fix: proportional penalty scaling in [0.5, 0.8] range → 0..33.3
+                        // V273-fix: proportional penalty scaling in [0.5, 0.8] range.
+                        // Formula: 10 × (fill_pct − 0.5) / 0.3 → penalty from 0 (at 50% fill)
+                        // to ~10 (at 80% fill), yielding a 0..33.3 effective range.
+                        // Above 80%: flat −20 penalty (zone nearly invalidated by fill).
                         if z.fvg_fill_pct > 0.8
                             z.score := math.max(10.0, z.score - 20.0)
                         else if z.fvg_fill_pct > 0.5
