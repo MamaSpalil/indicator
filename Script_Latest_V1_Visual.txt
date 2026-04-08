@@ -1,0 +1,443 @@
+// @version=6
+indicator("Trading Fluppy VISUAL",
+     overlay=true,
+     max_labels_count=50,
+     max_boxes_count=10,
+     max_lines_count=10)
+
+// ==========================================
+// ВИЗУАЛИЗАТОР (VISUAL) движка Trading Fluppy ENGINE
+// ==========================================
+
+// ── Сокращённые хелперы ───────────────────────────────────────────────────
+f_mt(float v) => str.tostring(v, format.mintick)
+f_ts(float v) => str.tostring(v)
+
+// Строгая математическая защита от сингулярности (Division by zero)
+// Гарантирует, что знаменатель не попадает в эпсилон-окрестность нуля.
+f_safe_div(float num, float den, float eps = 1e-9) =>
+    math.abs(den) < eps ? 0.0 : num / den
+
+// ==========================================
+// БЛОК 1: Данные — локальные вычисления + значения по умолчанию из ENGINE
+// ==========================================
+// При подключении ENGINE: выберите соответствующий plot (ENG: ...) в настройках input.source()
+// При автономной работе: используются локальные fallback-значения (рассчитанные ниже)
+
+// ── Базовые расчёты (соответствуют ENGINE — fallback для автономного режима) ──
+int    p_z_len      = 100                               // Период Z-Score (ENGINE default)
+int    p_vol_len    = 40                                // Период EMA объёма (ENGINE default)
+int    p_atr_len    = 14                                // Период ATR (ENGINE default)
+float  body_sz      = math.abs(close - open)
+float  atr_val      = ta.atr(p_atr_len)
+
+// Z-Score: (body_sz − body_mean) / body_stdev
+float  sma_body     = ta.sma(body_sz, p_z_len)
+float  std_body     = ta.stdev(body_sz, p_z_len)
+float  body_mean    = na(sma_body) ? 0.0 : sma_body
+float  body_stdev   = na(std_body) or std_body == 0 ? math.max(syminfo.mintick, na(atr_val) ? syminfo.mintick : atr_val * 0.01) : std_body
+// Защищенное деление для Z-Score
+float  src_z_score  = f_safe_div(body_sz - body_mean, body_stdev)
+
+// RVOL: volume / vol_mean
+float  ema_vol      = ta.ema(volume, p_vol_len)
+float  vol_mean     = na(ema_vol) or ema_vol == 0 ? 1.0 : ema_vol
+// Защищенное деление для RVOL
+float  src_rvol     = f_safe_div(volume, vol_mean)
+
+// Тренды (упрощённые — EMA-based, аналог ENGINE HTF/ITF)
+float  ema_long     = ta.ema(close, 200)
+float  ema_mid      = ta.ema(close, 50)
+float  src_htf_trend = close > ema_long ? 1.0 : close < ema_long ? -1.0 : 0.0
+float  src_itf_trend = close > ema_mid  ? 1.0 : close < ema_mid  ? -1.0 : 0.0
+float  src_major_bos = src_htf_trend > 0 ? 1.0 : 0.0
+
+// VWAP: ta.vwap(hlc3)
+float  src_vwap     = ta.vwap(hlc3)
+
+// Дистанции до пробоя (требуют зонный анализ ENGINE — fallback = na)
+float  src_dist_bull = na
+float  src_dist_bear = na
+
+// Стохастика (требует модель ENGINE — fallback = 0.0)
+float  src_stoch_prob = 0.0
+float  src_stoch_n    = 0.0
+float  src_stoch_disc = 0.0
+
+// Статистика стратегии (недоступна в indicator — только в strategy — fallback = 0.0)
+float  src_trades       = 0.0
+float  src_wins         = 0.0
+float  src_gross_profit = 0.0
+float  src_gross_loss   = 0.0
+float  src_equity       = 1000.0
+float  src_dd_pct       = 0.0
+
+// Зоны (требуют зонный анализ ENGINE — fallback = 0.0)
+float  src_zones_sup = 0.0
+float  src_zones_res = 0.0
+float  src_zones_bb  = 0.0
+float  src_zones_rz  = 0.0
+
+// Safe Point Value: syminfo.pointvalue для фьючерсов, 1.0 для остальных
+float  src_safe_pv   = syminfo.type == "futures" and not na(syminfo.pointvalue) and syminfo.pointvalue > 0 ? syminfo.pointvalue : 1.0
+
+// Волатильность: vol_ratio_c = clamp(ATR / ATR_slow, 0.3, 3.0)
+float  atr_slow      = ta.sma(atr_val, math.max(p_atr_len * 4, 50))
+// Защищенное деление для волатильности
+float  vol_ratio_raw = (na(atr_slow) or atr_slow == 0) ? 1.0 : f_safe_div(atr_val, atr_slow)
+float  src_vol_ratio = math.max(0.3, math.min(3.0, vol_ratio_raw))
+
+// HTF Vol Context (требует request.security из ENGINE, default = 1.0)
+float  src_htf_vol   = 1.0
+
+// Авто-параметры (значения по умолчанию из ENGINE tooltips)
+float  src_max_hist     = 500.0
+float  src_pivot_l_sup  = 5.0
+float  src_pivot_r_sup  = 2.0
+float  src_pivot_l_res  = 5.0
+float  src_pivot_r_res  = 2.0
+float  src_ob_len_sup   = 1.0
+float  src_ob_len_res   = 1.0
+float  src_cluster_tol  = na(atr_val) ? 0.5 : 0.5 * atr_val
+float  src_inv_dist_sup = na(atr_val) ? 4900.0 : 4900.0 * atr_val
+float  src_inv_dist_res = na(atr_val) ? 4900.0 : 4900.0 * atr_val
+float  src_fvg_min      = na(atr_val) ? 0.0001 : 0.0001 * atr_val
+float  src_fvg_max      = na(atr_val) ? 6.0 : 6.0 * atr_val
+float  src_confluence   = 2.0
+float  src_z_min        = 0.85
+float  src_z_max        = 5.0
+float  src_vol_max      = 2.5
+
+// ==========================================
+// БЛОК 2: INPUTS — настройки визуализации
+// ==========================================
+group_dash_ui  = "📊 Dashboard UI"
+show_dash      = input.bool(true,  "Показывать дашборд", group=group_dash_ui)
+dash_collapse  = input.bool(false, "Сворачивать дашборд", group=group_dash_ui)
+dash_size      = input.string("Small", "Размер текста", options=["Tiny","Small","Normal"], group=group_dash_ui)
+
+group_opts = "⚙️ Display Options"
+tuning_mode      = input.string("Auto-Adaptive", title="Режим работы (только отображение, не влияет на ENGINE)", options=["Auto-Adaptive", "Manual (User Control)"], group=group_opts)
+hist_mode        = input.string("Auto-Scale", title="Режим истории (для отображения)", options=["Auto-Scale", "Fixed Limit"], group=group_opts)
+use_mss_confirm  = input.bool(false, "MSS подтверждение (для отображения)", group=group_opts)
+use_zone_age_fade = input.bool(true, "Затухание зон по возрасту", group=group_opts)
+zone_max_age     = input.int(3500, "Макс. возраст зоны (бары)", minval=20, maxval=4990, group=group_opts)
+use_asset_adapt  = input.bool(true, "Авто-адаптация к инструменту", group=group_opts)
+stoch_min_val    = input.int(5, "Мин. зон для прогноза", minval=3, maxval=50, group=group_opts)
+
+// ── ENGINE Data Sources ─────────────────────────────────────────────────────
+// Подключите ENGINE plot-каналы через input.source() в настройках индикатора.
+// Если ENGINE не подключён — используются локальные fallback-значения.
+group_eng = "🔗 ENGINE Data (input.source)"
+eng_z_score      = input.source(close, "VIS: Z-Score",      tooltip="ENG: Z-Score | Диапазон: -10..+10 σ. Нормализованная аномальность тела свечи", group=group_eng)
+eng_rvol         = input.source(close, "VIS: RVOL",         tooltip="ENG: RVOL | Диапазон: 0..∞ (типично 0.1-5.0×). Относительный объём", group=group_eng)
+eng_htf_trend    = input.source(close, "VIS: HTF Trend",    tooltip="ENG: HTF Trend | Значения: -1 (bear), 0 (flat), 1 (bull)", group=group_eng)
+eng_itf_trend    = input.source(close, "VIS: ITF Trend",    tooltip="ENG: ITF Trend | Значения: -1 (bear), 0 (flat), 1 (bull)", group=group_eng)
+eng_major_bos    = input.source(close, "VIS: Major BOS",    tooltip="ENG: Major BOS | Значения: 0 (bear), 1 (bull). Break of Structure", group=group_eng)
+eng_vwap         = input.source(close, "VIS: VWAP",         tooltip="ENG: VWAP | Диапазон: цена актива. Volume-Weighted Average Price", group=group_eng)
+eng_dist_bull    = input.source(close, "VIS: Dist Bull",    tooltip="ENG: Dist Bull | Диапазон: 0..∞ тиков. Расстояние до бычьего пробоя", group=group_eng)
+eng_dist_bear    = input.source(close, "VIS: Dist Bear",    tooltip="ENG: Dist Bear | Диапазон: 0..∞ тиков. Расстояние до медвежьего пробоя", group=group_eng)
+eng_stoch_prob   = input.source(close, "VIS: Stoch Prob",   tooltip="ENG: Stoch Prob | Диапазон: 0.1-99.9%. Вероятность стохастической модели", group=group_eng)
+eng_stoch_n      = input.source(close, "VIS: Stoch N",      tooltip="ENG: Stoch N | Диапазон: 0-50. Количество зон в выборке", group=group_eng)
+eng_stoch_disc   = input.source(close, "VIS: Stoch Disc",   tooltip="ENG: Stoch Disc | Диапазон: 0-0.25. Скидка при высокой вероятности", group=group_eng)
+eng_trades       = input.source(close, "VIS: Trades",       tooltip="ENG: Trades | Диапазон: 0..∞. Всего закрытых сделок", group=group_eng)
+eng_wins         = input.source(close, "VIS: Wins",         tooltip="ENG: Wins | Диапазон: 0..∞. Количество выигрышных сделок", group=group_eng)
+eng_gross_profit = input.source(close, "VIS: Gross Profit", tooltip="ENG: Gross Profit | Диапазон: 0..∞. Валовая прибыль", group=group_eng)
+eng_gross_loss   = input.source(close, "VIS: Gross Loss",   tooltip="ENG: Gross Loss | Диапазон: 0..∞ (абс.). Валовый убыток", group=group_eng)
+eng_equity       = input.source(close, "VIS: Equity",       tooltip="ENG: Equity | Диапазон: >0. Текущий капитал стратегии", group=group_eng)
+eng_dd_pct       = input.source(close, "VIS: DD%",          tooltip="ENG: DD% | Диапазон: 0-100%. Текущая просадка", group=group_eng)
+eng_zones_sup    = input.source(close, "VIS: Zones Sup",    tooltip="ENG: Zones Sup | Диапазон: 0-50. Активные зоны поддержки", group=group_eng)
+eng_zones_res    = input.source(close, "VIS: Zones Res",    tooltip="ENG: Zones Res | Диапазон: 0-50. Активные зоны сопротивления", group=group_eng)
+eng_zones_bb     = input.source(close, "VIS: Zones BB",     tooltip="ENG: Zones BB | Диапазон: 0-50. Активные Breaker Blocks", group=group_eng)
+eng_zones_rz     = input.source(close, "VIS: Zones RZ",     tooltip="ENG: Zones RZ | Диапазон: 0-50. Активные Rejection Zones", group=group_eng)
+eng_safe_pv      = input.source(close, "VIS: Safe PV",      tooltip="ENG: Safe PV | Диапазон: ≥1.0. Point Value для фьючерсов", group=group_eng)
+eng_vol_ratio    = input.source(close, "VIS: Vol Ratio",    tooltip="ENG: Vol Ratio | Диапазон: 0.3-3.0. ATR/ATR_slow волатильность", group=group_eng)
+eng_htf_vol      = input.source(close, "VIS: HTF Vol",      tooltip="ENG: HTF Vol | Диапазон: 0.5-3.0. HTF волатильность контекст", group=group_eng)
+eng_max_hist     = input.source(close, "VIS: Max Hist",     tooltip="ENG: Max Hist | Диапазон: 500-4999. Глубина истории в барах", group=group_eng)
+eng_pivot_l_sup  = input.source(close, "VIS: Pivot L Sup",  tooltip="ENG: Pivot L Sup | Диапазон: 1-4999. Левое плечо пивота поддержки", group=group_eng)
+eng_pivot_r_sup  = input.source(close, "VIS: Pivot R Sup",  tooltip="ENG: Pivot R Sup | Диапазон: 1-4999. Правое плечо пивота поддержки", group=group_eng)
+eng_pivot_l_res  = input.source(close, "VIS: Pivot L Res",  tooltip="ENG: Pivot L Res | Диапазон: 1-4999. Левое плечо пивота сопротивления", group=group_eng)
+eng_pivot_r_res  = input.source(close, "VIS: Pivot R Res",  tooltip="ENG: Pivot R Res | Диапазон: 1-4999. Правое плечо пивота сопротивления", group=group_eng)
+eng_fvg_min      = input.source(close, "VIS: FVG Min",      tooltip="ENG: FVG Min | Диапазон: 0.0001-5.0 (×ATR). Минимальный FVG", group=group_eng)
+eng_fvg_max      = input.source(close, "VIS: FVG Max",      tooltip="ENG: FVG Max | Диапазон: 0.5-20.0 (×ATR). Максимальный FVG", group=group_eng)
+eng_confluence   = input.source(close, "VIS: Confluence",   tooltip="ENG: Confluence | Диапазон: 1-10. Мин. факторов для входа", group=group_eng)
+// V269: Missing ENGINE channels added
+eng_ob_len_sup   = input.source(close, "VIS: OB Len Sup",   tooltip="ENG: OB Len Sup | Диапазон: 1-20. Cluster size для поддержки", group=group_eng)
+eng_ob_len_res   = input.source(close, "VIS: OB Len Res",   tooltip="ENG: OB Len Res | Диапазон: 1-20. Cluster size для сопротивления", group=group_eng)
+eng_cluster_tol  = input.source(close, "VIS: Cluster Tol",  tooltip="ENG: Cluster Tol | Диапазон: 0.1-5.0 (×ATR). Noise tolerance", group=group_eng)
+eng_inv_dist_sup = input.source(close, "VIS: Inv Dist Sup", tooltip="ENG: Inv Dist Sup | Расстояние инвалидации Support (ATR)", group=group_eng)
+eng_inv_dist_res = input.source(close, "VIS: Inv Dist Res", tooltip="ENG: Inv Dist Res | Расстояние инвалидации Resistance (ATR)", group=group_eng)
+eng_z_min        = input.source(close, "VIS: Z Min",        tooltip="ENG: Z Min | Диапазон: 0.1-5.0. Минимальный Z-Score порог", group=group_eng)
+eng_z_max        = input.source(close, "VIS: Z Max",        tooltip="ENG: Z Max | Диапазон: 1.0-15.0. Максимальный Z-Score порог", group=group_eng)
+eng_vol_max      = input.source(close, "VIS: Vol Max",      tooltip="ENG: Vol Max | Диапазон: 1.0-10.0. Максимальный RVOL порог", group=group_eng)
+// V269: New ENGINE channels
+eng_stoch_mu     = input.source(close, "VIS: Stoch Mu",     tooltip="ENG: Stoch Mu | Диапазон: >0 баров. Среднее время между зонами", group=group_eng)
+eng_stoch_sigma  = input.source(close, "VIS: Stoch Sigma",  tooltip="ENG: Stoch Sigma | Диапазон: ≥0. Стд.откл. времени между зонами", group=group_eng)
+eng_stoch_eta    = input.source(close, "VIS: Stoch Eta",    tooltip="ENG: Stoch Eta | Диапазон: ≥0 баров. Ожидаемое время до зоны", group=group_eng)
+eng_kelly_f      = input.source(close, "VIS: Kelly F",      tooltip="ENG: Kelly F | Диапазон: 0-1.0. Kelly Criterion оптимальная доля", group=group_eng)
+eng_sharpe       = input.source(close, "VIS: Sharpe",       tooltip="ENG: Sharpe | Диапазон: -∞..+∞ (годовой). Sharpe Ratio", group=group_eng)
+eng_sortino      = input.source(close, "VIS: Sortino",      tooltip="ENG: Sortino | Диапазон: -∞..+∞ (годовой). Sortino Ratio", group=group_eng)
+eng_mc_dd95      = input.source(close, "VIS: MC DD95",      tooltip="ENG: MC DD95 | Диапазон: 0-100%. Monte Carlo 95th pctile drawdown", group=group_eng)
+eng_equity_curve = input.source(close, "VIS: Equity Curve",  tooltip="ENG: Equity Curve | Текущий капитал для мини-графика", group=group_eng)
+// V270: New ENGINE channels
+eng_top1_price   = input.source(close, "VIS: Top1 Price",    tooltip="ENG: Top1 Price | Цена лучшей зоны", group=group_eng)
+eng_top1_score   = input.source(close, "VIS: Top1 Score",    tooltip="ENG: Top1 Score | Score лучшей зоны (0-150)", group=group_eng)
+eng_top1_dist    = input.source(close, "VIS: Top1 Dist",     tooltip="ENG: Top1 Dist | Расстояние до лучшей зоны (ATR)", group=group_eng)
+eng_regime       = input.source(close, "VIS: Regime",         tooltip="ENG: Regime | 0=trending_up, 1=trending_down, 2=ranging, 3=volatile", group=group_eng)
+eng_hurst        = input.source(close, "VIS: Hurst",          tooltip="ENG: Hurst | Hurst Exponent (0-1). >0.5=trending, <0.5=mean-reverting", group=group_eng)
+eng_cvd_div      = input.source(close, "VIS: CVD Div",        tooltip="ENG: CVD Div | 1=bullish div, -1=bearish div, 0=none", group=group_eng)
+eng_version      = input.source(close, "VIS: Version",      tooltip="ENG: Version | Ожидается: 270.0. Протокол совместимости", group=group_eng)
+
+// ── Переключатель: использовать данные из ENGINE или локальные fallback ──────
+use_engine_data  = input.bool(false, "Использовать данные из ENGINE (подключите source выше)", tooltip="⚠️ ВАЖНО: Включите ТОЛЬКО ПОСЛЕ подключения всех ENGINE plot-каналов к input.source() выше. По умолчанию все source = close (плейсхолдер). Если включить без подключения — дашборд покажет цену close вместо реальных метрик. Pine Script не позволяет автоопределение подключённых source.", group=group_eng)
+
+// ==========================================
+// БЛОК 3: ДЕКОДИРОВАНИЕ ДАННЫХ ИЗ ENGINE
+// ==========================================
+// Если use_engine_data включён — берём данные из input.source() (подключённый ENGINE).
+// Если выключен — берём локальные fallback-значения из БЛОКА 1.
+float v_z_score      = use_engine_data ? eng_z_score      : src_z_score
+float v_rvol         = use_engine_data ? eng_rvol         : src_rvol
+float _htf_trend_v   = use_engine_data ? eng_htf_trend    : src_htf_trend
+float _itf_trend_v   = use_engine_data ? eng_itf_trend    : src_itf_trend
+float _major_bos_v   = use_engine_data ? eng_major_bos    : src_major_bos
+bool  v_global_bull  = _htf_trend_v >  0.5
+bool  v_global_bear  = _htf_trend_v < -0.5
+bool  v_itf_bull     = _itf_trend_v >  0.5
+bool  v_itf_bear     = _itf_trend_v < -0.5
+bool  v_major_bull   = _major_bos_v >  0.5
+float v_vwap_val     = use_engine_data ? eng_vwap         : src_vwap
+float v_dist_bull    = use_engine_data ? eng_dist_bull    : src_dist_bull
+float v_dist_bear    = use_engine_data ? eng_dist_bear    : src_dist_bear
+float v_d_prob       = use_engine_data ? eng_stoch_prob   : src_stoch_prob
+int   v_d_n          = math.round(use_engine_data ? eng_stoch_n : src_stoch_n)
+float v_d_discount   = use_engine_data ? eng_stoch_disc   : src_stoch_disc
+int   v_total_tr     = math.round(use_engine_data ? eng_trades       : src_trades)
+int   v_wins         = math.round(use_engine_data ? eng_wins         : src_wins)
+float v_gross_profit = use_engine_data ? eng_gross_profit : src_gross_profit
+float v_gross_loss   = use_engine_data ? eng_gross_loss   : src_gross_loss
+float v_equity       = use_engine_data ? eng_equity       : src_equity
+float v_dd_pct       = use_engine_data ? eng_dd_pct       : src_dd_pct
+int   v_cnt_sup      = math.round(use_engine_data ? eng_zones_sup    : src_zones_sup)
+int   v_cnt_res      = math.round(use_engine_data ? eng_zones_res    : src_zones_res)
+int   v_cnt_bb       = math.round(use_engine_data ? eng_zones_bb     : src_zones_bb)
+int   v_cnt_rz       = math.round(use_engine_data ? eng_zones_rz     : src_zones_rz)
+float v_safe_pv      = use_engine_data ? eng_safe_pv      : src_safe_pv
+float v_vol_ratio    = use_engine_data ? eng_vol_ratio    : src_vol_ratio
+float v_htf_vol      = use_engine_data ? eng_htf_vol      : src_htf_vol
+float v_max_hist     = use_engine_data ? eng_max_hist     : src_max_hist
+float v_piv_l_sup    = use_engine_data ? eng_pivot_l_sup  : src_pivot_l_sup
+float v_piv_r_sup    = use_engine_data ? eng_pivot_r_sup  : src_pivot_r_sup
+float v_piv_l_res    = use_engine_data ? eng_pivot_l_res  : src_pivot_l_res
+float v_piv_r_res    = use_engine_data ? eng_pivot_r_res  : src_pivot_r_res
+float v_ob_len_sup   = use_engine_data ? eng_ob_len_sup   : src_ob_len_sup
+float v_ob_len_res   = use_engine_data ? eng_ob_len_res   : src_ob_len_res
+float v_cluster_tol  = use_engine_data ? eng_cluster_tol  : src_cluster_tol
+float v_inv_dist_sup = use_engine_data ? eng_inv_dist_sup : src_inv_dist_sup
+float v_inv_dist_res = use_engine_data ? eng_inv_dist_res : src_inv_dist_res
+float v_fvg_min      = use_engine_data ? eng_fvg_min      : src_fvg_min
+float v_fvg_max      = use_engine_data ? eng_fvg_max      : src_fvg_max
+float v_min_confl    = use_engine_data ? eng_confluence    : src_confluence
+float v_z_min        = use_engine_data ? eng_z_min        : src_z_min
+float v_z_max        = use_engine_data ? eng_z_max        : src_z_max
+float v_vol_max      = use_engine_data ? eng_vol_max      : src_vol_max
+
+// V270: New channel decoders
+float v_top1_price   = use_engine_data ? eng_top1_price   : na
+float v_top1_score   = use_engine_data ? eng_top1_score   : 0.0
+float v_top1_dist    = use_engine_data ? eng_top1_dist    : na
+float v_regime       = use_engine_data ? eng_regime        : 0.0
+float v_hurst        = use_engine_data ? eng_hurst         : 0.5
+float v_cvd_div      = use_engine_data ? eng_cvd_div       : 0.0
+
+// V269: New channel decoders (stochastic, risk, version)
+float v_stoch_mu     = use_engine_data ? eng_stoch_mu     : 0.0
+float v_stoch_sigma  = use_engine_data ? eng_stoch_sigma  : 0.0
+float v_stoch_eta    = use_engine_data ? eng_stoch_eta    : 0.0
+float v_kelly_f      = use_engine_data ? eng_kelly_f      : 0.0
+float v_sharpe       = use_engine_data ? eng_sharpe       : 0.0
+float v_sortino      = use_engine_data ? eng_sortino      : 0.0
+float v_mc_dd95      = use_engine_data ? eng_mc_dd95      : 0.0
+float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
+float v_eng_version  = use_engine_data ? eng_version      : 0.0
+
+// V269: Version compatibility check
+float EXPECTED_ENG_VERSION = 270.0
+bool  v_version_ok   = not use_engine_data or (v_eng_version == EXPECTED_ENG_VERSION)
+
+// ==========================================
+// Производные значения (защищено через f_safe_div)
+// ==========================================
+float v_win_rate = v_total_tr > 0 ? f_safe_div(v_wins * 100.0, v_total_tr) : 0.0
+float v_pf       = v_gross_loss != 0 ? f_safe_div(v_gross_profit, math.max(math.abs(v_gross_loss), 0.001)) : na
+
+// Определение типа актива (по характеристикам тикера)
+string v_asset_label = "UNKNOWN"
+if str.contains(syminfo.type, "crypto")
+    v_asset_label := "CRYPTO"
+else if str.contains(syminfo.type, "futures") or str.contains(syminfo.type, "fund")
+    v_asset_label := "FUTURES"
+else if str.contains(syminfo.type, "forex")
+    v_asset_label := "FOREX"
+else if str.contains(syminfo.type, "stock")
+    v_asset_label := "STOCK"
+else if str.contains(syminfo.type, "index")
+    v_asset_label := "INDEX"
+
+// Определение сессии
+f_in_session(string sess_spec) =>
+    not na(time(timeframe.period, sess_spec, "America/New_York"))
+bool _kz_asia    = f_in_session("1900-0300")
+bool _kz_london  = f_in_session("0300-1130")
+bool _kz_ny      = f_in_session("0930-1600")
+bool _kz_overlap = f_in_session("0930-1130")
+string _temp_s   = (_kz_asia ? "Asia " : "") + (_kz_london ? "London " : "") + (_kz_ny ? "NY " : "") + (_kz_overlap ? "Overlap" : "")
+string v_session  = _temp_s == "" ? "Quiet" : str.trim(_temp_s)
+
+// ==========================================
+// БЛОК 4: DASHBOARD
+// ==========================================
+var table dash = table.new(position.top_right, 2, 42, bgcolor=color.new(color.black, 40), border_width=1)
+
+f_dr(int row, string lbl, string value, color lc, color vc, string sz) =>
+    table.cell(dash, 0, row, lbl, text_color=lc, text_size=sz)
+    table.cell(dash, 1, row, value, text_color=vc, text_size=sz)
+
+f_fmt_dist(float dist, color break_col) =>
+    string txt = "N/A"
+    color  col = color.gray
+    if not na(dist)
+        if dist <= 0
+            txt := "⚡ BREAK!"
+            col := break_col
+        else
+            txt := str.tostring(dist,"#") + " tks"
+            col := color.white
+    [txt, col]
+
+if barstate.islast and show_dash
+    string t_sz  = dash_size == "Tiny" ? size.tiny : (dash_size == "Small" ? size.small : size.normal)
+    // V269: ENGINE connection indicator (green dot = connected, red dot = standalone)
+    string eng_dot = use_engine_data ? "🟢" : "🔴"
+    string eng_status = use_engine_data ? eng_dot + " ENGINE" : eng_dot + " Standalone"
+    // V269: Version mismatch warning
+    string ver_warn = ""
+    if use_engine_data and not v_version_ok
+        ver_warn := " ⚠️v" + str.tostring(v_eng_version, "#")
+    string h_txt = dash_collapse ? "TFA V1.0 (MINI)" : "Trading Fluppy (" + eng_status + ver_warn + ")"
+
+    table.cell(dash, 0, 0, h_txt, text_color=color.white, bgcolor=use_engine_data ? (v_version_ok ? color.new(color.teal, 55) : color.new(color.orange, 55)) : color.new(color.blue, 55), text_size=t_sz)
+    table.cell(dash, 1, 0, dash_collapse ? "➕" : "➖", text_color=color.white, bgcolor=color.new(color.purple, 55), text_size=t_sz)
+
+    if not dash_collapse
+        string trend_txt  = v_global_bull ? "BULLISH 🟢" : v_global_bear ? "BEARISH 🔴" : "FLAT ⚪"
+        string itf_txt    = v_itf_bull ? "🟢 ITF Bull" : v_itf_bear ? "🔴 ITF Bear" : "⚪ ITF Flat"
+        string vwap_txt   = close > v_vwap_val ? "Above 🟢" : "Below 🔴"
+        string major_txt  = v_major_bull ? "BULL META 🟢" : "BEAR META 🔴"
+
+        f_dr(1,  "Asset Type", v_asset_label + (v_safe_pv != 1.0 ? " PV=" + str.tostring(v_safe_pv,"#.##") : ""), color.gray, color.yellow, t_sz)
+        f_dr(2,  "HTF Trend", trend_txt, color.gray, v_global_bull ? color.lime : color.red, t_sz)
+        f_dr(3,  "ITF Trend", itf_txt, color.gray, v_itf_bull ? color.lime : color.orange, t_sz)
+        f_dr(4,  "Major BOS", major_txt, color.gray, v_major_bull ? color.lime : color.red, t_sz)
+        f_dr(5,  "VWAP", vwap_txt, color.gray, close > v_vwap_val ? color.lime : color.orange, t_sz)
+        f_dr(6,  "Z-Score", str.tostring(v_z_score,"#.##") + " σ", color.gray, v_z_score > v_z_max ? #FFD700 : (v_z_score > v_z_min ? color.lime : color.white), t_sz)
+        f_dr(7,  "RVOL", str.tostring(v_rvol,"#.##") + "×", color.gray, v_rvol > v_vol_max ? #FFD700 : (v_rvol > 1.0 ? color.lime : color.red), t_sz)
+        f_dr(8,  "Hist Depth", f_ts(v_max_hist) + " (" + hist_mode + ")", color.gray, color.white, t_sz)
+
+        f_dr(9,  "Active Zones", "Sup:" + f_ts(v_cnt_sup) + " Res:" + f_ts(v_cnt_res) + " BB:" + f_ts(v_cnt_bb) + " RZ:" + f_ts(v_cnt_rz), color.gray, color.white, t_sz)
+        f_dr(10, "Total Trades", f_ts(v_total_tr), color.gray, color.white, t_sz)
+        f_dr(11, "Win Rate", str.tostring(v_win_rate,"#.#") + "%", color.gray, v_win_rate > 50 ? color.lime : color.orange, t_sz)
+        f_dr(12, "Profit Factor", na(v_pf) ? "N/A" : str.tostring(v_pf,"#.##"), color.gray, (not na(v_pf) and v_pf > 1.5) ? color.lime : color.white, t_sz)
+
+        f_dr(13, "Cur DD", str.tostring(v_dd_pct,"#.#") + "%", color.white, v_dd_pct > 10 ? color.orange : color.lime, t_sz)
+        f_dr(14, "Equity", f_mt(v_equity), color.gray, color.white, t_sz)
+        f_dr(15, "Active Session", v_session, color.gray, color.white, t_sz)
+
+        [txt_bull_dist, col_bull_dist] = f_fmt_dist(v_dist_bull, color.lime)
+        f_dr(16, "To Bull Break", txt_bull_dist, color.gray, col_bull_dist, t_sz)
+
+        [txt_bear_dist, col_bear_dist] = f_fmt_dist(v_dist_bear, color.red)
+        f_dr(17, "To Bear Break", txt_bear_dist, color.gray, col_bear_dist, t_sz)
+
+        string ui_prob = v_d_n >= stoch_min_val ? str.tostring(v_d_prob,"#.#") + "%" : "Wait (" + f_ts(v_d_n) + "/" + f_ts(stoch_min_val) + ")"
+        string ui_disc = v_d_discount > 0 ? " (-" + str.tostring(v_d_discount*100,"#") + "%)" : ""
+        color col_prob = v_d_prob >= 90.0 ? color.fuchsia : (v_d_prob > 60.0 ? color.orange : color.lime)
+        f_dr(18, "Min Confluence", f_ts(v_min_confl) + " factors" + (use_mss_confirm ? " +MSS" : ""), color.aqua, color.white, t_sz)
+        f_dr(19, "FVG Range (ATR)", str.tostring(v_fvg_min,"#.####") + " – " + str.tostring(v_fvg_max,"#.#"), color.gray, color.white, t_sz)
+        f_dr(20, "Stochastic P", ui_prob + ui_disc, color.aqua, col_prob, t_sz)
+        f_dr(21, "Sup Pivot (L/R)", (tuning_mode == "Auto-Adaptive" ? "🔄 " : "") + f_ts(v_piv_l_sup) + " / " + f_ts(v_piv_r_sup), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+        f_dr(22, "Res Pivot (L/R)", (tuning_mode == "Auto-Adaptive" ? "🔄 " : "") + f_ts(v_piv_l_res) + " / " + f_ts(v_piv_r_res), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+        f_dr(23, "Zone Age Max", use_zone_age_fade ? f_ts(zone_max_age) + " bars" : "OFF", color.gray, use_zone_age_fade ? color.white : color.gray, t_sz)
+        f_dr(24, "Asset Adapt", use_asset_adapt ? "ON (" + v_asset_label + ")" : "OFF", color.gray, use_asset_adapt ? color.lime : color.gray, t_sz)
+        string vr_txt = str.tostring(v_vol_ratio, "#.##") + "× | HTF:" + str.tostring(v_htf_vol, "#.##") + "×"
+        color  vr_col = v_vol_ratio > 1.5 ? color.orange : v_vol_ratio < 0.7 ? color.aqua : color.lime
+        f_dr(25, "Vol Ratio", vr_txt, color.gray, vr_col, t_sz)
+        string cl_txt = "S:" + f_ts(v_ob_len_sup) + " R:" + f_ts(v_ob_len_res) + " Tol:" + str.tostring(v_cluster_tol, "#.##")
+        f_dr(26, "SMC Cluster", cl_txt, color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+        f_dr(27, "Inv Dist (ATR)", str.tostring(v_inv_dist_sup, "#") + " / " + str.tostring(v_inv_dist_res, "#"), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+
+        // V269: Risk Management rows
+        f_dr(28, "Kelly F", str.tostring(v_kelly_f, "#.###"), color.gray, v_kelly_f > 0.2 ? color.lime : (v_kelly_f > 0 ? color.white : color.red), t_sz)
+        string sharpe_txt = str.tostring(v_sharpe, "#.##") + " | Sort: " + str.tostring(v_sortino, "#.##")
+        color sharpe_col = v_sharpe > 1.0 ? color.lime : (v_sharpe > 0 ? color.white : color.red)
+        f_dr(29, "Sharpe/Sortino", sharpe_txt, color.gray, sharpe_col, t_sz)
+        f_dr(30, "MC DD95%", str.tostring(v_mc_dd95, "#.#") + "%", color.gray, v_mc_dd95 > 30 ? color.red : (v_mc_dd95 > 15 ? color.orange : color.lime), t_sz)
+
+        // V269: Stochastic model details
+        string stoch_detail = "μ=" + str.tostring(v_stoch_mu, "#.#") + " σ=" + str.tostring(v_stoch_sigma, "#.#") + " η=" + str.tostring(v_stoch_eta, "#.#")
+        f_dr(31, "Stoch μ/σ/η", v_d_n >= stoch_min_val ? stoch_detail : "Wait", color.aqua, color.white, t_sz)
+
+        // V270: Regime detection
+        string regime_names = v_regime == 0.0 ? "Trending ↑ 🟢" : v_regime == 1.0 ? "Trending ↓ 🔴" : v_regime == 2.0 ? "Ranging ⚪" : "Volatile ⚡"
+        string regime_advice = v_regime == 0.0 ? "Buy zones" : v_regime == 1.0 ? "Sell zones" : v_regime == 2.0 ? "Fade extremes" : "Wait / Reduce size"
+        f_dr(32, "Market Regime", regime_names + " → " + regime_advice, color.aqua, v_regime == 0 ? color.lime : v_regime == 1 ? color.red : v_regime == 3 ? color.orange : color.white, t_sz)
+
+        // V270: Hurst Exponent
+        string hurst_txt = str.tostring(v_hurst, "#.##")
+        string hurst_label = v_hurst > 0.6 ? "Trending" : v_hurst < 0.4 ? "Mean-Revert" : "Random Walk"
+        f_dr(33, "Hurst Exp", hurst_txt + " (" + hurst_label + ")", color.gray, v_hurst > 0.6 ? color.lime : v_hurst < 0.4 ? color.orange : color.white, t_sz)
+
+        // V270: CVD Divergence
+        string cvd_txt = v_cvd_div > 0 ? "🟢 Bullish Div" : v_cvd_div < 0 ? "🔴 Bearish Div" : "⚪ None"
+        f_dr(34, "CVD Divergence", cvd_txt, color.gray, v_cvd_div > 0 ? color.lime : v_cvd_div < 0 ? color.red : color.white, t_sz)
+
+        // V270: Top Zone Info
+        string top_z_txt = "N/A"
+        color top_z_col = color.gray
+        if not na(v_top1_price) and v_top1_score > 0
+            string tier_txt = v_top1_score >= 100 ? "BEST" : v_top1_score >= 80 ? "STRONG" : v_top1_score >= 40 ? "NORMAL" : "PIVOT"
+            string dist_txt = not na(v_top1_dist) ? str.tostring(v_top1_dist, "#.#") + " ATR" : "N/A"
+            top_z_txt := tier_txt + " @ " + str.tostring(v_top1_price, format.mintick) + " (" + str.tostring(v_top1_score, "#") + "pts) " + dist_txt
+            top_z_col := v_top1_score >= 100 ? color.lime : v_top1_score >= 80 ? #00E5FF : color.white
+        f_dr(35, "Top Zone", top_z_txt, color.aqua, top_z_col, t_sz)
+
+        // V270: Version compatibility warning
+        if use_engine_data and not v_version_ok
+            f_dr(37, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
+        // V270: Standalone warning
+        if not use_engine_data
+            f_dr(38, "⚠️ STANDALONE", "Данные неточны без ENGINE", color.orange, color.yellow, t_sz)
+else
+    table.clear(dash, 0, 0, 1, 41)
+
+// V270: Equity curve + drawdown mini-graph in separate pane
+plot(v_equity_curve, "Equity Curve", color=color.new(color.lime, 30), linewidth=2, display=display.pane)
+// V270: Drawdown curve
+float v_peak_eq = ta.highest(v_equity_curve, 500)
+float v_drawdown = v_peak_eq > 0 ? f_safe_div(v_peak_eq - v_equity_curve, v_peak_eq) * 100.0 : 0.0
+plot(-v_drawdown, "Drawdown %", color=color.new(color.red, 50), linewidth=1, display=display.pane)
+
+// V270: Alert conditions
+alertcondition(not na(v_top1_dist) and v_top1_dist >= 0 and v_top1_dist < 1.0 and v_top1_score >= 100, title="🔔 Price near BEST zone", message="🔔 Цена подходит к BEST зоне (< 1 ATR)")
+alertcondition(v_cvd_div != 0, title="⚡ CVD Divergence detected", message="⚡ CVD дивергенция обнаружена — потенциальный разворот")
+
+// V269: Standalone warning label on chart
+var label _standalone_warn = na
+if barstate.islast and not use_engine_data
+    if not na(_standalone_warn)
+        label.delete(_standalone_warn)
+    _standalone_warn := label.new(bar_index, high * 1.002,
+         "⚠️ Данные неточны без ENGINE",
+         color=color.new(color.orange, 60),
+         textcolor=color.white, size=size.small,
+         style=label.style_label_down)
