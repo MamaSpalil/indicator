@@ -2988,8 +2988,10 @@ if not na(pl_int) and not na(last_sl)
     prev_sl_i       := last_sl_i
 
 // BOS: close breaks previous swing high/low
-bos_bull := not na(prev_swing_high) and close > prev_swing_high and barstate.isconfirmed
-bos_bear := not na(prev_swing_low) and close < prev_swing_low and barstate.isconfirmed
+// V274-fix: removed barstate.isconfirmed to allow real-time BOS/CHoCH detection
+// (exit hints in VISUAL depend on these signals via ENG: Struct Combo channel)
+bos_bull := not na(prev_swing_high) and close > prev_swing_high
+bos_bear := not na(prev_swing_low) and close < prev_swing_low
 
 // CHoCH: first reverse BOS after a trend
 if bos_bull and (na(last_bos_was_bull) or last_bos_was_bull == 0)
