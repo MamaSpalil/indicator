@@ -5333,8 +5333,7 @@ if not na(pd_high)
 if not na(pd_low)  
     dist_to_bear := (close - pd_low)  / syminfo.mintick
 
-// ── VWAP plot ─────────────────────────────────────────────────────────────
-plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
+// ── VWAP plot перемещён после ENG: export channels (см. конец блока 9) ──
 
 // ==========================================
 // БЛОК 9: ENGINE EXPORTS (для Visual-индикатора)
@@ -5535,12 +5534,17 @@ float _eng_itf  = itf_bull    ? 1 : itf_bear    ? -1 : 0
 float _eng_bos  = major_bull_trend ? 1 : 0
 
 // ── Plot-каналы для Visual-индикатора (input.source) ──────────────────────
+// ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
+// При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
 // но доступны как source для input.source() в VISUAL.
 // Тренд: 1=bull, -1=bear, 0=flat.  BOS: 1=bull, 0=bear.
 // Зоны: число активных зон каждого типа.  Stoch: вероятность и параметры.
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
+// ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
+plot(273.0,                              "ENG: Version",      color=color.new(#000000, 100))
+// ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
 plot(nz(_eng_htf, 0.0),                  "ENG: HTF Trend",    color=color.new(#000000, 100))
@@ -5606,5 +5610,5 @@ plot((_is_vcp ? 4.0 : 0.0) + (_is_squeeze ? 2.0 : 0.0) + (_is_absorption ? 1.0 :
 // V273-fix: combined BOS+CHoCH into single channel (BOS*10 + CHoCH) to stay within 64 plot limit
 plot((bos_bull ? 10.0 : bos_bear ? -10.0 : 0.0) + (choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0), "ENG: Struct Combo", color=color.new(#000000, 100))
 //plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
-// V273: Protocol version — active channel for VISUAL version check
-plot(273.0,                              "ENG: Version",      color=color.new(#000000, 100))
+// ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
+plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
