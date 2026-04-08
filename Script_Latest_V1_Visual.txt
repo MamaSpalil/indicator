@@ -18,6 +18,10 @@ f_ts(float v) => str.tostring(v)
 f_safe_div(float num, float den, float eps = 1e-9) =>
     math.abs(den) < eps ? 0.0 : num / den
 
+// Классификация зоны по Score → текстовый тир
+f_hint_tier(float score) =>
+    score >= 100 ? "BEST" : score >= 80 ? "STRONG" : score >= 40 ? "NORMAL" : "PIVOT"
+
 // ==========================================
 // БЛОК 1: Данные — локальные вычисления + значения по умолчанию из ENGINE
 // ==========================================
@@ -565,14 +569,12 @@ plot(-v_drawdown, "Drawdown %", color=color.new(color.red, 50), linewidth=1, dis
 // ==========================================
 if show_hints
     if hint_entry_long
-        string _tier = v_top1_score >= 100 ? "BEST" : v_top1_score >= 80 ? "STRONG" : v_top1_score >= 40 ? "NORMAL" : "PIVOT"
-        string _el_txt = "🟢 ВХОД LONG\n" + f_mt(close) + "\n" + _tier + " (" + str.tostring(v_top1_score, "#") + " pts)"
+        string _el_txt = "🟢 ВХОД LONG\n" + f_mt(close) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
         label.new(bar_index, low, _el_txt,
              style=label.style_label_up, color=color.new(#00C853, 10),
              textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
     if hint_entry_short
-        string _tier = v_top1_score >= 100 ? "BEST" : v_top1_score >= 80 ? "STRONG" : v_top1_score >= 40 ? "NORMAL" : "PIVOT"
-        string _es_txt = "🔴 ВХОД SHORT\n" + f_mt(close) + "\n" + _tier + " (" + str.tostring(v_top1_score, "#") + " pts)"
+        string _es_txt = "🔴 ВХОД SHORT\n" + f_mt(close) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
         label.new(bar_index, high, _es_txt,
              style=label.style_label_down, color=color.new(#FF1744, 10),
              textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
