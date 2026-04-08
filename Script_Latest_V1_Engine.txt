@@ -233,6 +233,7 @@ target_mode = input.string("Fibonacci Extensions","Режим целей", optio
 inp_tp_ratio = input.float(3.0,"Фикс. R:R", minval=1.0, maxval=10.0, step=0.2, group=group_risk)
 fib_tp1     = input.float(1.618,"Fib цель 1", minval=0.5, maxval=5.0,  step=0.1,  group=group_risk)
 fib_tp2     = input.float(2.618,"Fib цель 2", minval=1.0, maxval=10.0, step=0.2,  group=group_risk)
+inp_min_rr  = input.float(1.5, "Мин. R:R для входа", minval=0.5, maxval=5.0, step=0.1, tooltip="Минимальное соотношение Risk:Reward (TP1/SL). Сделки с R:R ниже порога блокируются.", group=group_risk)
 
 group_mng  = "🛡️ Management"
 use_be      = input.bool(true,  "Переводить в безубыток", group=group_mng)
@@ -4974,6 +4975,27 @@ if barstate.isconfirmed
 bool trigger_buy  = false
 bool trigger_sell = false
 
+// V275: Simulated position tracking for indicator mode
+var bool  sim_in_position  = false
+var int   sim_direction    = 0      // 1 = LONG, -1 = SHORT
+var float sim_entry_price  = na
+var float sim_sl_price     = na
+var float sim_tp1_price    = na
+var float sim_tp2_price    = na
+var int   sim_entry_bar    = na
+var int   sim_trades       = 0
+var int   sim_wins         = 0
+var float sim_gross_profit = 0.0
+var float sim_gross_loss   = 0.0
+var float sim_equity       = SIM_INITIAL_CAPITAL
+
+// V275: Export variables for current trade (reset each bar)
+float exp_entry_price = sim_in_position ? sim_entry_price : na
+float exp_sl_price    = sim_in_position ? sim_sl_price    : na
+float exp_tp1_price   = sim_in_position ? sim_tp1_price   : na
+float exp_tp2_price   = sim_in_position ? sim_tp2_price   : na
+float exp_sim_dir     = sim_in_position ? float(sim_direction) : 0.0
+
 float d_mu   = _sf_mu
 float d_sig  = _sf_sig
 float d_eta  = _sf_eta
@@ -5075,6 +5097,70 @@ bool is_actionable_bar = entry_mode == "Touch (Limit)" ? true : barstate.isconfi
 bool _pre_spike_bull = f_reverse_spike(true, inp_rspike_lookfwd)
 bool _pre_spike_bear = f_reverse_spike(false, inp_rspike_lookfwd)
 
+// V275: Simulated position management — exit logic
+// Check SL/TP/BOS exits BEFORE entry scan so same-bar re-entry is possible
+bool sim_exit_this_bar = false
+if sim_in_position
+    bool _sim_long  = sim_direction == 1
+    bool _sim_short = sim_direction == -1
+    float _sim_pnl  = na
+    bool _hit_sl  = false
+    bool _hit_tp1 = false
+    bool _hit_tp2 = false
+    bool _hit_bos = false
+    // SL check
+    if _sim_long  and not na(sim_sl_price) and low <= sim_sl_price
+        _hit_sl := true
+        _sim_pnl := sim_sl_price - sim_entry_price
+    if _sim_short and not na(sim_sl_price) and high >= sim_sl_price
+        _hit_sl := true
+        _sim_pnl := sim_entry_price - sim_sl_price
+    // TP2 check (full exit)
+    if not _hit_sl and _sim_long  and not na(sim_tp2_price) and high >= sim_tp2_price
+        _hit_tp2 := true
+        _sim_pnl := sim_tp2_price - sim_entry_price
+    if not _hit_sl and _sim_short and not na(sim_tp2_price) and low <= sim_tp2_price
+        _hit_tp2 := true
+        _sim_pnl := sim_entry_price - sim_tp2_price
+    // TP1 check (partial — for tracking, close fully for simplicity)
+    if not _hit_sl and not _hit_tp2 and _sim_long  and not na(sim_tp1_price) and high >= sim_tp1_price
+        _hit_tp1 := true
+        _sim_pnl := sim_tp1_price - sim_entry_price
+    if not _hit_sl and not _hit_tp2 and _sim_short and not na(sim_tp1_price) and low <= sim_tp1_price
+        _hit_tp1 := true
+        _sim_pnl := sim_entry_price - sim_tp1_price
+    // BOS exit (structure break against position)
+    if not _hit_sl and not _hit_tp1 and not _hit_tp2
+        if _sim_long  and bos_bear
+            _hit_bos := true
+            _sim_pnl := close - sim_entry_price
+        if _sim_short and bos_bull
+            _hit_bos := true
+            _sim_pnl := sim_entry_price - close
+    // Process exit
+    if _hit_sl or _hit_tp1 or _hit_tp2 or _hit_bos
+        sim_exit_this_bar := true
+        sim_trades += 1
+        if not na(_sim_pnl) and _sim_pnl > 0
+            sim_wins += 1
+            sim_gross_profit += _sim_pnl
+        else if not na(_sim_pnl)
+            sim_gross_loss += math.abs(_sim_pnl)
+        sim_equity := SIM_INITIAL_CAPITAL + sim_gross_profit - sim_gross_loss
+        sim_in_position  := false
+        sim_direction    := 0
+        sim_entry_price  := na
+        sim_sl_price     := na
+        sim_tp1_price    := na
+        sim_tp2_price    := na
+        sim_entry_bar    := na
+        // Update export vars after exit
+        exp_entry_price  := na
+        exp_sl_price     := na
+        exp_tp1_price    := na
+        exp_tp2_price    := na
+        exp_sim_dir      := 0.0
+
 if array.size(zone_db) > 0 and is_actionable_bar
     for i = 0 to array.size(zone_db) - 1
         Zone z = array.get(zone_db, i)
@@ -5105,9 +5191,12 @@ if array.size(zone_db) > 0 and is_actionable_bar
                 else
                     mss_ok := in_zone and (low < low[1]) and (close < open)
 
+            // V275: Trend-aware confluence — counter-trend entries need +1 extra factor
+            bool _trend_aligned = _zb ? (itf_bull or global_bull) : (itf_bear or global_bear)
+            int _trend_penalty  = _trend_aligned ? 0 : 1
             int confluence_count = (tr_ok ? 1 : 0) + (itf_ok ? 1 : 0) + (vwap_ok ? 1 : 0) +
                                    (rsi_ok ? 1 : 0) + (idm_ok ? 1 : 0) + (major_ok ? 1 : 0)
-            bool conf_ok = confluence_count >= min_confluence
+            bool conf_ok = confluence_count >= (min_confluence + _trend_penalty)
 
             string order_id    = (_zb ? "L_" : "S_") + f_ts(z.origin_idx)
             bool is_sfp_event  = false
@@ -5119,8 +5208,8 @@ if array.size(zone_db) > 0 and is_actionable_bar
                     if high > z.top and close <= z.top
                         is_sfp_event := true
 
-            bool already_in_trade = false
-            // indicator mode: no open trade tracking
+            // V275: Block entry if already in simulated position
+            bool already_in_trade = sim_in_position
 
             bool is_bb_creation_bar = (z.z_type == "BB" and z.created_at == bar_index)
 
@@ -5230,6 +5319,12 @@ if array.size(zone_db) > 0 and is_actionable_bar
                                 entry_comment := "⚡ ChoCh Confirm"
 
                     if do_trade
+                        // V275: Minimum R:R filter — block entries with poor risk:reward
+                        float _rr_ratio = dist > 0 ? math.abs(tp1 - en_price) / dist : 0.0
+                        if _rr_ratio < inp_min_rr
+                            do_trade := false
+
+                    if do_trade
                         string fvg_out   = (z.fvg_type != "None" and z.fvg_type != "") ? z.fvg_type : "No Gap"
                         string _tk_tf    = '","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period + '"}'
                         string msg_entry = '{"action":"' + (_zb ? "BUY" : "SELL") +
@@ -5249,8 +5344,7 @@ if array.size(zone_db) > 0 and is_actionable_bar
 
                         string _entry_comm = entry_comment + comm_suf + idm_suf
                         float  _entry_lim  = entry_mode=="Touch (Limit)" and not is_sfp_event ? en_price : na
-                        // indicator mode: strategy.entry/exit removed
-                        // Signal labels (trigger_buy/trigger_sell) still fire for VISUAL
+                        // V275: Simulated position tracking (replaces strategy.entry/exit)
 
                         if entry_mode != "Touch (Limit)" or is_sfp_event
                             if _zb  
@@ -5262,6 +5356,22 @@ if array.size(zone_db) > 0 and is_actionable_bar
                                 trigger_buy  := true
                             if not _zb and high >= en_price 
                                 trigger_sell := true
+
+                        // V275: Update simulated position state on entry
+                        if (trigger_buy or trigger_sell) and not sim_in_position
+                            sim_in_position := true
+                            sim_direction   := _zb ? 1 : -1
+                            sim_entry_price := en_price
+                            sim_sl_price    := sl_price
+                            sim_tp1_price   := tp1
+                            sim_tp2_price   := tp2
+                            sim_entry_bar   := bar_index
+                            // Update export vars
+                            exp_entry_price := en_price
+                            exp_sl_price    := sl_price
+                            exp_tp1_price   := tp1
+                            exp_tp2_price   := tp2
+                            exp_sim_dir     := _zb ? 1.0 : -1.0
 
 // ── Breakeven manager ─────────────────────────────────────────────────────
 // V255: безусловный вызов ta.highest/ta.lowest для серийной согласованности
@@ -5321,21 +5431,21 @@ for z in zone_db
             cnt_res += 1
 
 var float max_eq = SIM_INITIAL_CAPITAL
-max_eq := math.max(max_eq, SIM_INITIAL_CAPITAL)
-float dd_pct = max_eq > 0 ? f_safe_div(max_eq - SIM_INITIAL_CAPITAL, max_eq) * 100 : 0
+max_eq := math.max(max_eq, sim_equity)
+float dd_pct = max_eq > 0 ? f_safe_div(max_eq - sim_equity, max_eq) * 100 : 0
 
 // V269: Risk Management Metrics ──────────────────────────────────────────
 int  RM_MAX_RETURNS       = 100  // Rolling window for trade returns (balance recency vs. sample size)
 int  RM_MIN_FOR_RISK      = 5    // Min trades for Sharpe/Sortino (statistical significance)
 int  RM_MIN_FOR_MC        = 10   // Min trades for Monte Carlo bootstrap resampling
 int  RM_MC_MAX_STEPS      = 50   // Max path length per MC sim (perf vs. accuracy trade-off)
-// Kelly Criterion: f = (win_rate * avg_win - (1-win_rate) * avg_loss) / avg_win
-int _rm_trades = 0  // indicator mode: no real trades
-int _rm_wins   = 0
+// V275: Use simulated trade data instead of hardcoded zeros
+int _rm_trades = sim_trades
+int _rm_wins   = sim_wins
 int _rm_losses = _rm_trades - _rm_wins
 float _rm_wr   = _rm_trades > 0 ? f_safe_div(float(_rm_wins), float(_rm_trades)) : 0.0
-float _rm_avg_win  = 0.0  // indicator mode: no trade P&L data
-float _rm_avg_loss = 0.0
+float _rm_avg_win  = _rm_wins > 0 ? f_safe_div(sim_gross_profit, float(_rm_wins)) : 0.0
+float _rm_avg_loss = _rm_losses > 0 ? f_safe_div(sim_gross_loss, float(_rm_losses)) : 0.0
 float _kelly_f = _rm_avg_win > 0 ? f_safe_div(_rm_wr * _rm_avg_win - (1.0 - _rm_wr) * _rm_avg_loss, _rm_avg_win) : 0.0
 _kelly_f := math.max(0.0, math.min(_kelly_f, 1.0))
 
@@ -5343,9 +5453,9 @@ _kelly_f := math.max(0.0, math.min(_kelly_f, 1.0))
 // Uses per-trade returns approximation
 var array<float> _trade_returns = array.new<float>()
 if _rm_trades > 0 and _rm_trades != nz(_rm_trades[1], 0)
-    // indicator mode: no real trades, block never executes
-    float last_pnl = 0.0
-    float last_eq  = SIM_INITIAL_CAPITAL
+    // V275: Use simulated trade P&L
+    float last_pnl = sim_exit_this_bar ? (sim_gross_profit - nz(sim_gross_profit[1], 0.0)) - (sim_gross_loss - nz(sim_gross_loss[1], 0.0)) : 0.0
+    float last_eq  = math.max(sim_equity, 1.0)
     float ret = f_safe_div(last_pnl, last_eq)
     array.push(_trade_returns, ret)
     if array.size(_trade_returns) > RM_MAX_RETURNS
@@ -5468,7 +5578,7 @@ if array.size(zone_db) > 0
             _top1_zone_dist := z.is_bull ? f_safe_div(close - z.top, atr_val) : f_safe_div(z.bot - close, atr_val)
 
 // Equity curve for VISUAL plot
-float _equity_curve = SIM_INITIAL_CAPITAL  // indicator mode: flat equity
+float _equity_curve = sim_equity  // V275: use simulated equity
 
 // V269: Unit-test invariant checks on last bar ────────────────────────────
 var label _inv_label = na
@@ -5509,7 +5619,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(273.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(275.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -5524,9 +5634,9 @@ plot(nz(float(d_n), 0.0),               "ENG: Stoch N",      color=color.new(#00
 plot(nz(d_discount, 0.0),               "ENG: Stoch Disc",   color=color.new(#000000, 100))
 plot(nz(float(_rm_trades), 0.0),             "ENG: Trades",   color=color.new(#000000, 100))
 plot(nz(float(_rm_wins), 0.0),               "ENG: Wins",        color=color.new(#000000, 100))
-plot(0.0,                                    "ENG: Gross Profit", color=color.new(#000000, 100))
-plot(0.0,                                    "ENG: Gross Loss", color=color.new(#000000, 100))
-plot(SIM_INITIAL_CAPITAL,                    "ENG: Equity", color=color.new(#000000, 100))
+plot(nz(sim_gross_profit, 0.0),              "ENG: Gross Profit", color=color.new(#000000, 100))
+plot(nz(sim_gross_loss, 0.0),                "ENG: Gross Loss", color=color.new(#000000, 100))
+plot(nz(sim_equity, SIM_INITIAL_CAPITAL),    "ENG: Equity", color=color.new(#000000, 100))
 plot(nz(dd_pct, 0.0),                   "ENG: DD%",          color=color.new(#000000, 100))
 plot(nz(float(cnt_sup), 0.0),           "ENG: Zones Sup",    color=color.new(#000000, 100))
 plot(nz(float(cnt_res), 0.0),           "ENG: Zones Res",    color=color.new(#000000, 100))
@@ -5575,6 +5685,12 @@ plot(nz(_poc_price, 0.0),               "ENG: POC Price",    color=color.new(#00
 plot((_is_vcp ? 4.0 : 0.0) + (_is_squeeze ? 2.0 : 0.0) + (_is_absorption ? 1.0 : 0.0), "ENG: Micro Combo", color=color.new(#000000, 100))
 // V273-fix: combined BOS+CHoCH into single channel (BOS*10 + CHoCH) to stay within 64 plot limit
 plot((bos_bull ? 10.0 : bos_bear ? -10.0 : 0.0) + (choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0), "ENG: Struct Combo", color=color.new(#000000, 100))
+// V275: Simulated trade state export channels (entry/SL/TP1/direction)
+plot(nz(exp_entry_price, 0.0),            "ENG: Sim Entry",    color=color.new(#000000, 100))
+plot(nz(exp_sl_price, 0.0),               "ENG: Sim SL",       color=color.new(#000000, 100))
+plot(nz(exp_tp1_price, 0.0),              "ENG: Sim TP1",      color=color.new(#000000, 100))
+plot(nz(exp_tp2_price, 0.0),              "ENG: Sim TP2",      color=color.new(#000000, 100))
+plot(nz(exp_sim_dir, 0.0),                "ENG: Sim Dir",      color=color.new(#000000, 100))
 //plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
 // ── PD plots (перенесены ПОСЛЕ ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 p_h = plot(use_pd ? pd_high : na, "PD High", display=display.none)
