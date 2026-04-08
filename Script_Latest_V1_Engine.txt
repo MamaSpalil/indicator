@@ -5154,7 +5154,7 @@ if sim_in_position
         sim_tp1_price    := na
         sim_tp2_price    := na
         sim_entry_bar    := na
-        // Update export vars after exit
+        // Update export vars after exit (needed immediately: plot() reads these same bar)
         exp_entry_price  := na
         exp_sl_price     := na
         exp_tp1_price    := na
@@ -5192,8 +5192,8 @@ if array.size(zone_db) > 0 and is_actionable_bar
                     mss_ok := in_zone and (low < low[1]) and (close < open)
 
             // V275: Trend-aware confluence — counter-trend entries need +1 extra factor
-            bool _trend_aligned = _zb ? (itf_bull or global_bull) : (itf_bear or global_bear)
-            int _trend_penalty  = _trend_aligned ? 0 : 1
+            bool _trend_supports_entry = _zb ? (itf_bull or global_bull) : (itf_bear or global_bear)
+            int _trend_penalty  = _trend_supports_entry ? 0 : 1
             int confluence_count = (tr_ok ? 1 : 0) + (itf_ok ? 1 : 0) + (vwap_ok ? 1 : 0) +
                                    (rsi_ok ? 1 : 0) + (idm_ok ? 1 : 0) + (major_ok ? 1 : 0)
             bool conf_ok = confluence_count >= (min_confluence + _trend_penalty)
@@ -5320,8 +5320,8 @@ if array.size(zone_db) > 0 and is_actionable_bar
 
                     if do_trade
                         // V275: Minimum R:R filter — block entries with poor risk:reward
-                        float _rr_ratio = dist > 0 ? math.abs(tp1 - en_price) / dist : 0.0
-                        if _rr_ratio < inp_min_rr
+                        float _actual_rr = dist > 0 ? math.abs(tp1 - en_price) / dist : 0.0
+                        if _actual_rr < inp_min_rr
                             do_trade := false
 
                     if do_trade
