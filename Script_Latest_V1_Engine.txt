@@ -5208,8 +5208,9 @@ if array.size(zone_db) > 0 and is_actionable_bar
                     if high > z.top and close <= z.top
                         is_sfp_event := true
 
-            // V275: Block entry if already in simulated position
-            bool already_in_trade = sim_in_position
+            // V277: Block entry if already in simulated position OR just exited this bar
+            // Prevents exit→re-enter cycle within same bar that causes rapid label spam
+            bool already_in_trade = sim_in_position or sim_exit_this_bar
 
             bool is_bb_creation_bar = (z.z_type == "BB" and z.created_at == bar_index)
 
@@ -5624,7 +5625,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(276.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(277.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
