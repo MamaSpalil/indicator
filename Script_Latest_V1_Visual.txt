@@ -259,10 +259,11 @@ float v_cvd_div      = use_engine_data ? eng_cvd_div       : 0.0
 float v_poc_price    = use_engine_data ? eng_poc_price     : na
 // V273-fix: decode combined bitmask channel (bit2=VCP, bit1=Squeeze, bit0=Absorption)
 float _micro_raw     = use_engine_data ? math.round(eng_micro_combo) : 0.0
-float v_vcp          = _micro_raw >= 4.0 ? 1.0 : 0.0
-float v_squeeze      = math.floor(_micro_raw % 4.0) >= 2.0 ? 1.0 : 0.0
-float v_absorption   = math.floor(_micro_raw % 2.0) >= 1.0 ? 1.0 : 0.0
+float v_vcp          = math.floor(_micro_raw / 4.0) % 2.0
+float v_squeeze      = math.floor(_micro_raw / 2.0) % 2.0
+float v_absorption   = _micro_raw % 2.0
 // V273-fix: decode combined BOS+CHoCH channel (BOS×10 + CHoCH)
+// Threshold ±5.0 separates BOS values (±9..±11) from pure CHoCH (±1, 0)
 float _struct_raw    = use_engine_data ? math.round(eng_struct_combo) : 0.0
 float v_bos_signal   = _struct_raw >= 5.0 ? 1.0 : _struct_raw <= -5.0 ? -1.0 : 0.0
 float v_choch_signal = _struct_raw - (v_bos_signal * 10.0)
