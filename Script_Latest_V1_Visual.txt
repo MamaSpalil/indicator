@@ -280,6 +280,8 @@ float v_sharpe       = use_engine_data ? eng_sharpe       : 0.0
 float v_sortino      = use_engine_data ? eng_sortino      : 0.0
 float v_mc_dd95      = use_engine_data ? eng_mc_dd95      : 0.0
 float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
+// v_eng_version reads eng_version unconditionally (not gated by use_engine_data)
+// to enable auto-detection: when connected to ENGINE it returns 273.0, otherwise close price
 float v_eng_version  = eng_version
 
 // V273: Version compatibility check (uses auto-detection constant from line 138)
