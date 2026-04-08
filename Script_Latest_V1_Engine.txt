@@ -2016,9 +2016,6 @@ type Zone
     float        inst_footprint    // Institutional footprint score
 
 var array<Zone> zone_db = array.new<Zone>()
-// V273-fix: guard against duplicate zone creation on same pivot bar
-var int _last_created_bull_idx = -1
-var int _last_created_bear_idx = -1
 
 f_zone_bg(color base, int transp) => color.new(base, math.max(0, math.min(100, transp)))
 f_zone_bd(color base)              => color.new(base, 0)
@@ -3031,7 +3028,7 @@ var bool  has_eq_highs  = false
 var bool  has_eq_lows   = false
 
 if not na(atr_val) and atr_val > 0
-    float eq_tol = atr_val * 0.1
+    eq_tol := atr_val * 0.1
     // Check last 3 swing highs for equal levels
     int eq_h_count = 0
     float eq_h_ref = nz(last_sh, high)
@@ -4402,6 +4399,9 @@ f_create_new_zones() =>
     var float _sf_eta  = na
     var float _sf_prob = 0.0
     var int   _sf_n    = 0
+    // V273-fix: guard against duplicate zone creation on same pivot bar
+    var int _last_created_bull_idx = -1
+    var int _last_created_bear_idx = -1
     max_bars_back(_mem_atr,  MAX_BUFF)
     max_bars_back(_mem_rvol, MAX_BUFF)
     max_bars_back(_mem_rsi,  MAX_BUFF)
