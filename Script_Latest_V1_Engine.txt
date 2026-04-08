@@ -1,15 +1,15 @@
 // @version=6
-strategy("Trading Fluppy ENGINE",
+indicator("Trading Fluppy ENGINE",
      overlay=true,
-     initial_capital=1000,
-     default_qty_type=strategy.cash,
-     default_qty_value=1000,
      max_labels_count=500,
      max_boxes_count=500,
      max_lines_count=500,
-     max_bars_back=5000,
-     calc_on_every_tick=true,
-     process_orders_on_close=true)
+     max_bars_back=5000)
+
+// ── Simulation layer (replaces strategy.* for indicator() mode) ─────────
+// TradingView не позволяет indicator() читать plot() из strategy().
+// Поэтому ENGINE преобразован в indicator() с симуляцией торговой статистики.
+float SIM_INITIAL_CAPITAL = 1000.0
 
 // ==========================================
 // БЛОК 0: ГЛОБАЛЬНЫЕ КОНСТАНТЫ БЕЗОПАСНОСТИ
@@ -2391,9 +2391,7 @@ method trigger_bb(Zone this, bool strong_break, float break_z_score, bool do_exe
                 bb_limit_reached := true
         if strong_break and not bb_limit_reached
             string order_id_old = (this.is_bull ? "L_" : "S_") + f_ts(this.origin_idx)
-            strategy.cancel(order_id_old)
-            strategy.cancel("TP1_" + order_id_old)
-            strategy.cancel("TP2_" + order_id_old)
+            // indicator mode: strategy.cancel removed (no order management)
 
             if not na(this.debug_lbl)
                 label.delete(this.debug_lbl)
@@ -4157,9 +4155,7 @@ f_handle_zone_removal(Zone z, bool is_closed, bool far, bool deep_wick_broke, bo
     if broke_cond and is_closed
         if not _was_converted
             string order_id = (z.is_bull ? "L_" : "S_") + f_ts(z.origin_idx)
-            strategy.cancel(order_id)
-            strategy.cancel("TP1_" + order_id)
-            strategy.cancel("TP2_" + order_id)
+            // indicator mode: strategy.cancel removed (no order management)
             f_delete_zone_graphics(z)
             array.remove(zone_db, i)
             zone_removed := true
@@ -5039,7 +5035,7 @@ f_qty(float dist) =>
     float min_guard = math.max(syminfo.mintick * 10, atr_val * 0.1)
     float safe_dist = math.max(dist, min_guard)
     // safe_pv = pointvalue для фьючерсов, 1.0 для spot/stock
-    float dollar_risk = strategy.equity * (p_risk / 100.0)
+    float dollar_risk = SIM_INITIAL_CAPITAL * (p_risk / 100.0)
     f_safe_div(dollar_risk, safe_dist * safe_pv)
 
 float auto_pad_mult = 1.0
@@ -5122,11 +5118,7 @@ if array.size(zone_db) > 0 and is_actionable_bar
                         is_sfp_event := true
 
             bool already_in_trade = false
-            if strategy.opentrades > 0
-                for ot = 0 to strategy.opentrades - 1
-                    if strategy.opentrades.entry_id(ot) == order_id
-                        already_in_trade := true
-                        break
+            // indicator mode: no open trade tracking
 
             bool is_bb_creation_bar = (z.z_type == "BB" and z.created_at == bar_index)
 
@@ -5255,13 +5247,8 @@ if array.size(zone_db) > 0 and is_actionable_bar
 
                         string _entry_comm = entry_comment + comm_suf + idm_suf
                         float  _entry_lim  = entry_mode=="Touch (Limit)" and not is_sfp_event ? en_price : na
-                        if _zb
-                            strategy.entry(order_id, strategy.long, qty=qty, limit=_entry_lim, comment=_entry_comm, alert_message=msg_entry)
-                        else
-                            strategy.entry(order_id, strategy.short, qty=qty, limit=_entry_lim, comment=_entry_comm, alert_message=msg_entry)
-                        if use_part
-                            strategy.exit("TP1_"+order_id, order_id, qty_percent=50, stop=sl_price, limit=tp1, trail_points=t_points, trail_offset=t_offset, alert_message=msg_exit1)
-                        strategy.exit("TP2_"+order_id, order_id, stop=sl_price, limit=tp2, trail_points=t_points, trail_offset=t_offset, alert_message=msg_exit2)
+                        // indicator mode: strategy.entry/exit removed
+                        // Signal labels (trigger_buy/trigger_sell) still fire for VISUAL
 
                         if entry_mode != "Touch (Limit)" or is_sfp_event
                             if _zb  
@@ -5279,28 +5266,7 @@ if array.size(zone_db) > 0 and is_actionable_bar
 float _be_high_pre = ta.highest(high, 2)
 float _be_low_pre  = ta.lowest(low, 2)
 
-if strategy.opentrades > 0
-    for i = 0 to strategy.opentrades - 1
-        string op_id      = strategy.opentrades.entry_id(i)
-        float  op_price   = strategy.opentrades.entry_price(i)
-        int    op_idx_bar = strategy.opentrades.entry_bar_index(i)
-        bool   is_long    = strategy.opentrades.size(i) > 0
-        int    duration   = math.max(1, bar_index - op_idx_bar)
-        int    safe_dur   = math.min(duration, MAX_OFFSET)
-
-        // V255: ручной расчёт highest/lowest вместо ta.highest/ta.lowest в условном блоке
-        float _be_high_since = high
-        float _be_low_since  = low
-        if safe_dur > 0
-            for j = 1 to safe_dur
-                _be_high_since := math.max(_be_high_since, nz(high[j]))
-                _be_low_since  := math.min(_be_low_since,  nz(low[j]))
-
-        float be_run = is_long ? (_be_high_since - op_price) : (op_price - _be_low_since)
-        float be_req = atr_val * p_be_trig
-        if use_be and be_run >= be_req
-            strategy.exit("TP1_"+op_id, op_id, stop=op_price, comment_loss="BE Active")
-            strategy.exit("TP2_"+op_id, op_id, stop=op_price, comment_loss="BE Active")
+// indicator mode: breakeven manager disabled (no open trades to manage)
 
 // ── LONG / SHORT Labels (V248: контекстуальные по типу зоны и RSI) ────────
 if show_signals and in_window
@@ -5352,9 +5318,9 @@ for z in zone_db
         else
             cnt_res += 1
 
-var float max_eq = strategy.initial_capital
-max_eq := math.max(max_eq, strategy.equity)
-float dd_pct = max_eq > 0 ? f_safe_div(max_eq - strategy.equity, max_eq) * 100 : 0
+var float max_eq = SIM_INITIAL_CAPITAL
+max_eq := math.max(max_eq, SIM_INITIAL_CAPITAL)
+float dd_pct = max_eq > 0 ? f_safe_div(max_eq - SIM_INITIAL_CAPITAL, max_eq) * 100 : 0
 
 // V269: Risk Management Metrics ──────────────────────────────────────────
 int  RM_MAX_RETURNS       = 100  // Rolling window for trade returns (balance recency vs. sample size)
@@ -5362,12 +5328,12 @@ int  RM_MIN_FOR_RISK      = 5    // Min trades for Sharpe/Sortino (statistical s
 int  RM_MIN_FOR_MC        = 10   // Min trades for Monte Carlo bootstrap resampling
 int  RM_MC_MAX_STEPS      = 50   // Max path length per MC sim (perf vs. accuracy trade-off)
 // Kelly Criterion: f = (win_rate * avg_win - (1-win_rate) * avg_loss) / avg_win
-int _rm_trades = strategy.closedtrades
-int _rm_wins   = strategy.wintrades
+int _rm_trades = 0  // indicator mode: no real trades
+int _rm_wins   = 0
 int _rm_losses = _rm_trades - _rm_wins
 float _rm_wr   = _rm_trades > 0 ? f_safe_div(float(_rm_wins), float(_rm_trades)) : 0.0
-float _rm_avg_win  = _rm_wins > 0 ? f_safe_div(strategy.grossprofit, float(_rm_wins)) : 0.0
-float _rm_avg_loss = _rm_losses > 0 ? f_safe_div(math.abs(strategy.grossloss), float(_rm_losses)) : 0.0
+float _rm_avg_win  = 0.0  // indicator mode: no trade P&L data
+float _rm_avg_loss = 0.0
 float _kelly_f = _rm_avg_win > 0 ? f_safe_div(_rm_wr * _rm_avg_win - (1.0 - _rm_wr) * _rm_avg_loss, _rm_avg_win) : 0.0
 _kelly_f := math.max(0.0, math.min(_kelly_f, 1.0))
 
@@ -5375,9 +5341,9 @@ _kelly_f := math.max(0.0, math.min(_kelly_f, 1.0))
 // Uses per-trade returns approximation
 var array<float> _trade_returns = array.new<float>()
 if _rm_trades > 0 and _rm_trades != nz(_rm_trades[1], 0)
-    // New trade closed — record return; on first trade last_eq falls back to initial_capital
-    float last_pnl = strategy.netprofit - nz(strategy.netprofit[1], 0.0)
-    float last_eq  = nz(strategy.equity[1], strategy.initial_capital)
+    // indicator mode: no real trades, block never executes
+    float last_pnl = 0.0
+    float last_eq  = SIM_INITIAL_CAPITAL
     float ret = f_safe_div(last_pnl, last_eq)
     array.push(_trade_returns, ret)
     if array.size(_trade_returns) > RM_MAX_RETURNS
@@ -5471,7 +5437,7 @@ bool _is_absorption = f_detect_absorption()
 // sweep/eff/pa use 0.5 (neutral) as these per-trade aggregate values aren't stored at exit time;
 // z_score and rvol are normalized to [0,1]; trend is binary (1.0 = bull, 0.0 = bear)
 if _rm_trades > 0 and _rm_trades != nz(_rm_trades[1], 0)
-    bool _is_win_trade = strategy.netprofit > nz(strategy.netprofit[1], 0.0)
+    bool _is_win_trade = false  // indicator mode: no real trades
     f_update_adaptive_weights(_is_win_trade, nz(z_score, 0.0), nz(rvol, 1.0), global_bull ? 1.0 : 0.0, 0.5, 0.5, 0.5)
     // lr=0.01: small learning rate prevents overreaction to single trades
     f_nn_update(nz(z_score, 0.0) / 5.0, math.min(nz(rvol, 1.0), 5.0) / 5.0, global_bull ? 1.0 : 0.0, 0.5, 0.5, 0.5, _is_win_trade ? 100.0 : 30.0, 0.01)
@@ -5500,7 +5466,7 @@ if array.size(zone_db) > 0
             _top1_zone_dist := z.is_bull ? f_safe_div(close - z.top, atr_val) : f_safe_div(z.bot - close, atr_val)
 
 // Equity curve for VISUAL plot
-float _equity_curve = strategy.equity
+float _equity_curve = SIM_INITIAL_CAPITAL  // indicator mode: flat equity
 
 // V269: Unit-test invariant checks on last bar ────────────────────────────
 var label _inv_label = na
@@ -5554,11 +5520,11 @@ plot(nz(dist_to_bear, 0.0),              "ENG: Dist Bear",    color=color.new(#0
 plot(nz(d_prob, 0.0),                    "ENG: Stoch Prob",   color=color.new(#000000, 100))
 plot(nz(float(d_n), 0.0),               "ENG: Stoch N",      color=color.new(#000000, 100))
 plot(nz(d_discount, 0.0),               "ENG: Stoch Disc",   color=color.new(#000000, 100))
-plot(nz(float(strategy.closedtrades), 0.0), "ENG: Trades",   color=color.new(#000000, 100))
-plot(nz(float(strategy.wintrades), 0.0), "ENG: Wins",        color=color.new(#000000, 100))
-plot(nz(strategy.grossprofit, 0.0),      "ENG: Gross Profit", color=color.new(#000000, 100))
-plot(nz(math.abs(strategy.grossloss), 0.0), "ENG: Gross Loss", color=color.new(#000000, 100))
-plot(nz(strategy.equity, strategy.initial_capital), "ENG: Equity", color=color.new(#000000, 100))
+plot(nz(float(_rm_trades), 0.0),             "ENG: Trades",   color=color.new(#000000, 100))
+plot(nz(float(_rm_wins), 0.0),               "ENG: Wins",        color=color.new(#000000, 100))
+plot(0.0,                                    "ENG: Gross Profit", color=color.new(#000000, 100))
+plot(0.0,                                    "ENG: Gross Loss", color=color.new(#000000, 100))
+plot(SIM_INITIAL_CAPITAL,                    "ENG: Equity", color=color.new(#000000, 100))
 plot(nz(dd_pct, 0.0),                   "ENG: DD%",          color=color.new(#000000, 100))
 plot(nz(float(cnt_sup), 0.0),           "ENG: Zones Sup",    color=color.new(#000000, 100))
 plot(nz(float(cnt_res), 0.0),           "ENG: Zones Res",    color=color.new(#000000, 100))
@@ -5592,7 +5558,7 @@ plot(nz(_kelly_f, 0.0),                 "ENG: Kelly F",      color=color.new(#00
 plot(nz(_sharpe, 0.0),                  "ENG: Sharpe",       color=color.new(#000000, 100))
 plot(nz(_sortino, 0.0),                 "ENG: Sortino",      color=color.new(#000000, 100))
 plot(nz(_mc_dd95, 0.0),                 "ENG: MC DD95",      color=color.new(#000000, 100))
-plot(nz(_equity_curve, strategy.initial_capital), "ENG: Equity Curve", color=color.new(#000000, 100))
+plot(nz(_equity_curve, SIM_INITIAL_CAPITAL), "ENG: Equity Curve", color=color.new(#000000, 100))
 // V270: New export channels for enhanced VISUAL dashboard
 // V273-fix: uncommented Top1 zone channels for VISUAL dashboard
 plot(nz(_top1_zone_price, 0.0),          "ENG: Top1 Price",   color=color.new(#000000, 100))
