@@ -145,11 +145,11 @@ hint_min_score   = input.int(40, "Мин. Score зоны", minval=10, maxval=150
 // Если ENGINE не подключён — используются локальные fallback-значения.
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 273.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 275.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
 // ── Автоопределение ENGINE по каналу Version ──
-float EXPECTED_ENG_VERSION = 273.0
+float EXPECTED_ENG_VERSION = 275.0
 bool  _auto_engine = math.round(eng_version) == EXPECTED_ENG_VERSION
-eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=273 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
+eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=275 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
 bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
 // ── Каналы данных (порядок соответствует ENGINE plot-каналам) ──
 eng_z_score      = input.source(close, "VIS: Z-Score",      tooltip="→ ENG: Z-Score | Диапазон: -10..+10 σ. Нормализованная аномальность тела свечи", group=group_eng)
@@ -209,6 +209,12 @@ eng_cvd_div      = input.source(close, "VIS: CVD Div",        tooltip="→ ENG: 
 eng_poc_price    = input.source(close, "VIS: POC Price",      tooltip="→ ENG: POC Price | Volume Profile Point of Control price level", group=group_eng)
 eng_micro_combo  = input.source(close, "VIS: Micro Combo",    tooltip="→ ENG: Micro Combo | Bitmask: bit2=VCP, bit1=Squeeze, bit0=Absorption (0-7)", group=group_eng)
 eng_struct_combo = input.source(close, "VIS: Struct Combo",   tooltip="→ ENG: Struct Combo | BOS×10 + CHoCH. BOS: ±10, CHoCH: ±1", group=group_eng)
+// V275: Simulated trade state channels
+eng_sim_entry    = input.source(close, "VIS: Sim Entry",      tooltip="→ ENG: Sim Entry | Цена входа текущей симулированной позиции (0 = нет позиции)", group=group_eng)
+eng_sim_sl       = input.source(close, "VIS: Sim SL",         tooltip="→ ENG: Sim SL | Цена стоп-лосса текущей позиции", group=group_eng)
+eng_sim_tp1      = input.source(close, "VIS: Sim TP1",        tooltip="→ ENG: Sim TP1 | Цена первого тейк-профита", group=group_eng)
+eng_sim_tp2      = input.source(close, "VIS: Sim TP2",        tooltip="→ ENG: Sim TP2 | Цена второго тейк-профита", group=group_eng)
+eng_sim_dir      = input.source(close, "VIS: Sim Dir",        tooltip="→ ENG: Sim Dir | Направление: 1=LONG, -1=SHORT, 0=нет позиции", group=group_eng)
 
 // ==========================================
 // БЛОК 3: ДЕКОДИРОВАНИЕ ДАННЫХ ИЗ ENGINE
@@ -292,8 +298,18 @@ float v_sortino      = use_engine_data ? eng_sortino      : 0.0
 float v_mc_dd95      = use_engine_data ? eng_mc_dd95      : 0.0
 float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
 // v_eng_version reads eng_version unconditionally (not gated by use_engine_data)
-// to enable auto-detection: when connected to ENGINE it returns 273.0, otherwise close price
+// to enable auto-detection: when connected to ENGINE it returns 275.0, otherwise close price
 float v_eng_version  = eng_version
+
+// V275: Simulated trade state from ENGINE
+float v_sim_entry    = use_engine_data ? eng_sim_entry     : 0.0
+float v_sim_sl       = use_engine_data ? eng_sim_sl        : 0.0
+float v_sim_tp1      = use_engine_data ? eng_sim_tp1       : 0.0
+float v_sim_tp2      = use_engine_data ? eng_sim_tp2       : 0.0
+float v_sim_dir      = use_engine_data ? eng_sim_dir       : 0.0
+bool  v_sim_in_long  = v_sim_dir > 0.5
+bool  v_sim_in_short = v_sim_dir < -0.5
+bool  v_sim_in_trade = v_sim_in_long or v_sim_in_short
 
 // V273: Version compatibility check (uses auto-detection constant from line 138)
 bool  v_version_ok   = not use_engine_data or (math.round(v_eng_version) == EXPECTED_ENG_VERSION)
@@ -301,18 +317,23 @@ bool  v_version_ok   = not use_engine_data or (math.round(v_eng_version) == EXPE
 // ==========================================
 // БЛОК 2.5: ТОРГОВЫЕ ПОДСКАЗКИ — ЛОГИКА (Entry/Exit State Machine)
 // ==========================================
-// Подсказки в реальном времени: вход/выход на основе зон поддержки/сопротивления.
-// Если предыдущая подсказка = вход → следующая = выход.
-// Если предыдущей подсказки нет → подсказка на вход.
+// V275: Hints now synchronize with ENGINE's simulated position state
+// ENGINE tracks: sim_entry, sim_sl, sim_tp1, sim_tp2, sim_dir
 // State: 0 = ожидание входа, 1 = в LONG (ожидание выхода), -1 = в SHORT (ожидание выхода)
 var int   hint_state       = 0
 var float hint_entry_price = na
+var float hint_sl_price    = na
+var float hint_tp1_price   = na
+var float hint_tp2_price   = na
 var int   hint_entry_bar   = na
 
 // Сброс при отключении ENGINE (данные зон недоступны)
 if not use_engine_data and hint_state != 0
     hint_state       := 0
     hint_entry_price := na
+    hint_sl_price    := na
+    hint_tp1_price   := na
+    hint_tp2_price   := na
     hint_entry_bar   := na
 
 // Проверки зон
@@ -322,27 +343,41 @@ bool _hint_zone_is_support = _hint_has_zone and v_top1_price < close
 bool _hint_zone_is_resist  = _hint_has_zone and v_top1_price > close
 bool _hint_vwap_ok         = not na(v_vwap_val)
 
-// ── Условия входа (state == 0) ──
-bool _entry_long_ok = hint_state == 0 and _hint_zone_near and _hint_zone_is_support and
-     (v_global_bull or v_itf_bull) and _hint_vwap_ok and close >= v_vwap_val and v_regime != 3.0
+// V275: Sync with ENGINE sim state — detect entry/exit transitions
+bool _eng_entered_long  = v_sim_in_long  and (hint_state != 1)
+bool _eng_entered_short = v_sim_in_short and (hint_state != -1)
+bool _eng_exited_long   = hint_state == 1  and not v_sim_in_long
+bool _eng_exited_short  = hint_state == -1 and not v_sim_in_short
 
-bool _entry_short_ok = hint_state == 0 and _hint_zone_near and _hint_zone_is_resist and
-     (v_global_bear or v_itf_bear) and _hint_vwap_ok and close <= v_vwap_val and v_regime != 3.0
+// ── Условия входа: ENGINE sim state + zone/trend confirmation ──
+bool _entry_long_ok  = _eng_entered_long  and v_sim_entry > 0
+bool _entry_short_ok = _eng_entered_short and v_sim_entry > 0
 
-// ── Условия выхода (state == 1 для LONG, -1 для SHORT) ──
-bool _exit_long_ok = hint_state == 1 and (
+// ── Условия выхода: ENGINE sim state + structural/TP signals ──
+bool _exit_long_ok = _eng_exited_long or (hint_state == 1 and (
      v_bos_signal < -0.5 or
      v_choch_signal < -0.5 or
      (v_global_bear and v_itf_bear) or
      v_regime == 3.0 or
-     (_hint_zone_near and _hint_zone_is_resist))
+     (not na(hint_tp2_price) and high >= hint_tp2_price) or
+     (not na(hint_sl_price) and low <= hint_sl_price)))
 
-bool _exit_short_ok = hint_state == -1 and (
+bool _exit_short_ok = _eng_exited_short or (hint_state == -1 and (
      v_bos_signal > 0.5 or
      v_choch_signal > 0.5 or
      (v_global_bull and v_itf_bull) or
      v_regime == 3.0 or
-     (_hint_zone_near and _hint_zone_is_support))
+     (not na(hint_tp2_price) and low <= hint_tp2_price) or
+     (not na(hint_sl_price) and high >= hint_sl_price)))
+
+// Fallback: if ENGINE not connected, use zone-based hints
+if not use_engine_data
+    _entry_long_ok  := hint_state == 0 and _hint_zone_near and _hint_zone_is_support and
+         (v_global_bull or v_itf_bull) and _hint_vwap_ok and close >= v_vwap_val and v_regime != 3.0
+    _entry_short_ok := hint_state == 0 and _hint_zone_near and _hint_zone_is_resist and
+         (v_global_bear or v_itf_bear) and _hint_vwap_ok and close <= v_vwap_val and v_regime != 3.0
+    _exit_long_ok   := hint_state == 1 and (v_bos_signal < -0.5 or v_choch_signal < -0.5 or (v_global_bear and v_itf_bear) or v_regime == 3.0 or (_hint_zone_near and _hint_zone_is_resist))
+    _exit_short_ok  := hint_state == -1 and (v_bos_signal > 0.5 or v_choch_signal > 0.5 or (v_global_bull and v_itf_bull) or v_regime == 3.0 or (_hint_zone_near and _hint_zone_is_support))
 
 // Захват данных до смены состояния (для расчёта P&L при выходе)
 float _hint_saved_entry = hint_entry_price
@@ -356,22 +391,34 @@ bool hint_exit_short  = false
 if _entry_long_ok
     hint_entry_long  := true
     hint_state       := 1
-    hint_entry_price := close
+    hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
+    hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
+    hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
+    hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
     hint_entry_bar   := bar_index
 else if _entry_short_ok
     hint_entry_short := true
     hint_state       := -1
-    hint_entry_price := close
+    hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
+    hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
+    hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
+    hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
     hint_entry_bar   := bar_index
 else if _exit_long_ok
     hint_exit_long   := true
     hint_state       := 0
     hint_entry_price := na
+    hint_sl_price    := na
+    hint_tp1_price   := na
+    hint_tp2_price   := na
     hint_entry_bar   := na
 else if _exit_short_ok
     hint_exit_short  := true
     hint_state       := 0
     hint_entry_price := na
+    hint_sl_price    := na
+    hint_tp1_price   := na
+    hint_tp2_price   := na
     hint_entry_bar   := na
 
 // ==========================================
@@ -543,7 +590,18 @@ if barstate.islast and show_dash
         f_dr(38, "Structure Breaks", struct_txt, color.gray, struct_col, t_sz)
 
         // Trade Hint status row
-        string hint_status_txt = hint_state == 1 ? "🟢 IN LONG @ " + f_mt(nz(hint_entry_price, close)) : hint_state == -1 ? "🔴 IN SHORT @ " + f_mt(nz(hint_entry_price, close)) : "⏳ Ожидание входа"
+        // V275: Enhanced trade hint with R:R and direction
+        string hint_status_txt = "⏳ Ожидание входа"
+        if hint_state == 1
+            float _h_risk = not na(hint_sl_price) ? (nz(hint_entry_price, close) - hint_sl_price) : na
+            float _h_rr = not na(_h_risk) and _h_risk > 0 and not na(hint_tp1_price) ? f_safe_div(hint_tp1_price - nz(hint_entry_price, close), _h_risk) : na
+            string _h_rr_txt = not na(_h_rr) ? " R:R " + str.tostring(_h_rr, "#.#") : ""
+            hint_status_txt := "🟢 LONG @ " + f_mt(nz(hint_entry_price, close)) + _h_rr_txt
+        else if hint_state == -1
+            float _h_risk_s = not na(hint_sl_price) ? (hint_sl_price - nz(hint_entry_price, close)) : na
+            float _h_rr_s = not na(_h_risk_s) and _h_risk_s > 0 and not na(hint_tp1_price) ? f_safe_div(nz(hint_entry_price, close) - hint_tp1_price, _h_risk_s) : na
+            string _h_rr_txt_s = not na(_h_rr_s) ? " R:R " + str.tostring(_h_rr_s, "#.#") : ""
+            hint_status_txt := "🔴 SHORT @ " + f_mt(nz(hint_entry_price, close)) + _h_rr_txt_s
         color  hint_status_col = hint_state == 1 ? color.lime : hint_state == -1 ? color.red : color.gray
         f_dr(39, "Trade Hint", show_hints ? hint_status_txt : "OFF", color.aqua, show_hints ? hint_status_col : color.gray, t_sz)
 
@@ -569,30 +627,76 @@ plot(-v_drawdown, "Drawdown %", color=color.new(color.red, 50), linewidth=1, dis
 // ==========================================
 if show_hints
     if hint_entry_long
-        string _el_txt = "🟢 ВХОД LONG\n" + f_mt(close) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
+        // V275: Calculate R:R for display
+        float _el_risk = not na(hint_sl_price) and hint_entry_price > hint_sl_price ? (hint_entry_price - hint_sl_price) : na
+        float _el_rr1  = not na(_el_risk) and _el_risk > 0 and not na(hint_tp1_price) ? f_safe_div(hint_tp1_price - hint_entry_price, _el_risk) : na
+        string _el_rr_txt = not na(_el_rr1) ? "\nR:R " + str.tostring(_el_rr1, "#.#") + ":1" : ""
+        string _el_sl_txt = not na(hint_sl_price) ? "\nSL: " + f_mt(hint_sl_price) : ""
+        string _el_tp_txt = not na(hint_tp1_price) ? "\nTP1: " + f_mt(hint_tp1_price) : ""
+        string _el_tp2_txt = not na(hint_tp2_price) ? " | TP2: " + f_mt(hint_tp2_price) : ""
+        string _el_txt = "🟢 ВХОД LONG\n" + f_mt(nz(hint_entry_price, close)) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)" + _el_rr_txt + _el_sl_txt + _el_tp_txt + _el_tp2_txt
         label.new(bar_index, low, _el_txt,
              style=label.style_label_up, color=color.new(#00C853, 10),
              textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
     if hint_entry_short
-        string _es_txt = "🔴 ВХОД SHORT\n" + f_mt(close) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
+        // V275: Calculate R:R for display
+        float _es_risk = not na(hint_sl_price) and hint_sl_price > hint_entry_price ? (hint_sl_price - hint_entry_price) : na
+        float _es_rr1  = not na(_es_risk) and _es_risk > 0 and not na(hint_tp1_price) ? f_safe_div(hint_entry_price - hint_tp1_price, _es_risk) : na
+        string _es_rr_txt = not na(_es_rr1) ? "\nR:R " + str.tostring(_es_rr1, "#.#") + ":1" : ""
+        string _es_sl_txt = not na(hint_sl_price) ? "\nSL: " + f_mt(hint_sl_price) : ""
+        string _es_tp_txt = not na(hint_tp1_price) ? "\nTP1: " + f_mt(hint_tp1_price) : ""
+        string _es_tp2_txt = not na(hint_tp2_price) ? " | TP2: " + f_mt(hint_tp2_price) : ""
+        string _es_txt = "🔴 ВХОД SHORT\n" + f_mt(nz(hint_entry_price, close)) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)" + _es_rr_txt + _es_sl_txt + _es_tp_txt + _es_tp2_txt
         label.new(bar_index, high, _es_txt,
              style=label.style_label_down, color=color.new(#FF1744, 10),
              textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
     if hint_exit_long
         float _pnl_l = close - nz(_hint_saved_entry, close)
         string _pnl_l_txt = (_pnl_l >= 0 ? "+" : "") + f_mt(_pnl_l)
-        string _reason_l = v_bos_signal < -0.5 ? "BOS ↓" : v_choch_signal < -0.5 ? "CHoCH ↓" : (v_global_bear and v_itf_bear) ? "Тренд ↓" : v_regime == 3.0 ? "Волатильность" : "Зона сопр."
+        // V275: Enhanced exit reason with TP/SL hit detection
+        string _reason_l = "Структурный"
+        if not na(nz(hint_sl_price[1])) and low <= nz(hint_sl_price[1])
+            _reason_l := "❌ SL Hit"
+        else if not na(nz(hint_tp2_price[1])) and high >= nz(hint_tp2_price[1])
+            _reason_l := "🎯 TP2 Hit"
+        else if not na(nz(hint_tp1_price[1])) and high >= nz(hint_tp1_price[1])
+            _reason_l := "🎯 TP1 Hit"
+        else if v_bos_signal < -0.5
+            _reason_l := "BOS ↓"
+        else if v_choch_signal < -0.5
+            _reason_l := "CHoCH ↓"
+        else if v_global_bear and v_itf_bear
+            _reason_l := "Тренд ↓"
+        else if v_regime == 3.0
+            _reason_l := "Волатильность"
+        color _xl_col = _pnl_l >= 0 ? color.new(#00C853, 20) : color.new(#FF1744, 20)
         string _xl_txt = "⬜ ВЫХОД LONG\n" + f_mt(close) + "\nP&L: " + _pnl_l_txt + "\n" + _reason_l
         label.new(bar_index, high, _xl_txt,
-             style=label.style_label_down, color=color.new(#78909C, 10),
+             style=label.style_label_down, color=_xl_col,
              textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
     if hint_exit_short
         float _pnl_s = nz(_hint_saved_entry, close) - close
         string _pnl_s_txt = (_pnl_s >= 0 ? "+" : "") + f_mt(_pnl_s)
-        string _reason_s = v_bos_signal > 0.5 ? "BOS ↑" : v_choch_signal > 0.5 ? "CHoCH ↑" : (v_global_bull and v_itf_bull) ? "Тренд ↑" : v_regime == 3.0 ? "Волатильность" : "Зона подд."
+        // V275: Enhanced exit reason with TP/SL hit detection
+        string _reason_s = "Структурный"
+        if not na(nz(hint_sl_price[1])) and high >= nz(hint_sl_price[1])
+            _reason_s := "❌ SL Hit"
+        else if not na(nz(hint_tp2_price[1])) and low <= nz(hint_tp2_price[1])
+            _reason_s := "🎯 TP2 Hit"
+        else if not na(nz(hint_tp1_price[1])) and low <= nz(hint_tp1_price[1])
+            _reason_s := "🎯 TP1 Hit"
+        else if v_bos_signal > 0.5
+            _reason_s := "BOS ↑"
+        else if v_choch_signal > 0.5
+            _reason_s := "CHoCH ↑"
+        else if v_global_bull and v_itf_bull
+            _reason_s := "Тренд ↑"
+        else if v_regime == 3.0
+            _reason_s := "Волатильность"
+        color _xs_col = _pnl_s >= 0 ? color.new(#00C853, 20) : color.new(#FF1744, 20)
         string _xs_txt = "⬜ ВЫХОД SHORT\n" + f_mt(close) + "\nP&L: " + _pnl_s_txt + "\n" + _reason_s
         label.new(bar_index, low, _xs_txt,
-             style=label.style_label_up, color=color.new(#78909C, 10),
+             style=label.style_label_up, color=_xs_col,
              textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
 
 // V274: Alert conditions for trade hints
