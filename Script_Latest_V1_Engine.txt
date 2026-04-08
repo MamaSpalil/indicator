@@ -5610,6 +5610,11 @@ float _eng_itf  = itf_bull    ? 1 : itf_bear    ? -1 : 0
 float _eng_bos  = major_bull_trend ? 1 : 0
 
 // ── Plot-каналы для Visual-индикатора (input.source) ──────────────────────
+// ⚠️ ЛИМИТ TradingView: indicator() допускает МАКСИМУМ 64 output-слота.
+//    В output-слоты считаются: plot(), plotshape(), plotchar(), plotarrow(),
+//    plotbar(), plotcandle(), bgcolor(), barcolor(), fill().
+//    Текущее использование: 64 / 64 (ENG: каналы + VWAP visible plot).
+//    При добавлении новых plot()-каналов — необходимо удалить или объединить существующие!
 // ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
 // При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
@@ -5692,11 +5697,26 @@ plot(nz(exp_tp1_price, 0.0),              "ENG: Sim TP1",      color=color.new(#
 plot(nz(exp_tp2_price, 0.0),              "ENG: Sim TP2",      color=color.new(#000000, 100))
 plot(nz(exp_sim_dir, 0.0),                "ENG: Sim Dir",      color=color.new(#000000, 100))
 //plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
-// ── PD plots (перенесены ПОСЛЕ ENG: каналов, чтобы не сбивать auto-assign порядок) ──
-p_h = plot(use_pd ? pd_high : na, "PD High", display=display.none)
-p_l = plot(use_pd ? pd_low  : na, "PD Low",  display=display.none)
-p_m = plot(use_pd ? pd_mid  : na, "PD Mid",  color=color.new(color.gray, 50), style=plot.style_circles)
-fill(p_h, p_m, color=use_pd ? color.new(color.red,   90) : na)
-fill(p_m, p_l, color=use_pd ? color.new(color.green, 90) : na)
+// ── PD visualization (line/box вместо plot/fill для экономии output-слотов) ──
+// Ранее использовалось 3×plot() + 2×fill() = 5 output-слотов.
+// Заменено на line.new()/box.new() которые НЕ считаются в лимит 64 output.
+var line _pd_ln_h = na
+var line _pd_ln_l = na
+var line _pd_ln_m = na
+var box  _pd_bx_u = na
+var box  _pd_bx_l = na
+if use_pd
+    bool _pd_chg = na(_pd_ln_h) or pd_high != nz(pd_high[1]) or pd_low != nz(pd_low[1]) or pd_mid != nz(pd_mid[1])
+    if _pd_chg
+        _pd_ln_h := line.new(bar_index, pd_high, bar_index, pd_high, color=color.new(color.red,   70))
+        _pd_ln_l := line.new(bar_index, pd_low,  bar_index, pd_low,  color=color.new(color.green, 70))
+        _pd_ln_m := line.new(bar_index, pd_mid,  bar_index, pd_mid,  color=color.new(color.gray,  50), style=line.style_dotted)
+        _pd_bx_u := box.new(bar_index, pd_high, bar_index, pd_mid, border_color=na, bgcolor=color.new(color.red,   90))
+        _pd_bx_l := box.new(bar_index, pd_mid,  bar_index, pd_low,  border_color=na, bgcolor=color.new(color.green, 90))
+    line.set_x2(_pd_ln_h, bar_index)
+    line.set_x2(_pd_ln_l, bar_index)
+    line.set_x2(_pd_ln_m, bar_index)
+    box.set_right(_pd_bx_u, bar_index)
+    box.set_right(_pd_bx_l, bar_index)
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
