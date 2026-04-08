@@ -5144,7 +5144,7 @@ if sim_in_position
         if not na(_sim_pnl) and _sim_pnl > 0
             sim_wins += 1
             sim_gross_profit += _sim_pnl
-        else if not na(_sim_pnl)
+        else if not na(_sim_pnl) and _sim_pnl < 0
             sim_gross_loss += math.abs(_sim_pnl)
         sim_equity := SIM_INITIAL_CAPITAL + sim_gross_profit - sim_gross_loss
         sim_in_position  := false
@@ -5624,7 +5624,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(275.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(276.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))

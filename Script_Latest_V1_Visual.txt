@@ -145,9 +145,9 @@ hint_min_score   = input.int(40, "Мин. Score зоны", minval=10, maxval=150
 // Если ENGINE не подключён — используются локальные fallback-значения.
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 275.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 276.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
 // ── Автоопределение ENGINE по каналу Version ──
-float EXPECTED_ENG_VERSION = 275.0
+float EXPECTED_ENG_VERSION = 276.0
 bool  _auto_engine = math.round(eng_version) == EXPECTED_ENG_VERSION
 eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=275 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
 bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
@@ -298,7 +298,7 @@ float v_sortino      = use_engine_data ? eng_sortino      : 0.0
 float v_mc_dd95      = use_engine_data ? eng_mc_dd95      : 0.0
 float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
 // v_eng_version reads eng_version unconditionally (not gated by use_engine_data)
-// to enable auto-detection: when connected to ENGINE it returns 275.0, otherwise close price
+// to enable auto-detection: when connected to ENGINE it returns 276.0, otherwise close price
 float v_eng_version  = eng_version
 
 // V275: Simulated trade state from ENGINE
@@ -353,22 +353,12 @@ bool _eng_exited_short  = hint_state == -1 and not v_sim_in_short
 bool _entry_long_ok  = _eng_entered_long  and v_sim_entry > 0
 bool _entry_short_ok = _eng_entered_short and v_sim_entry > 0
 
-// ── Условия выхода: ENGINE sim state + structural/TP signals ──
-bool _exit_long_ok = _eng_exited_long or (hint_state == 1 and (
-     v_bos_signal < -0.5 or
-     v_choch_signal < -0.5 or
-     (v_global_bear and v_itf_bear) or
-     v_regime == 3.0 or
-     (not na(hint_tp2_price) and high >= hint_tp2_price) or
-     (not na(hint_sl_price) and low <= hint_sl_price)))
-
-bool _exit_short_ok = _eng_exited_short or (hint_state == -1 and (
-     v_bos_signal > 0.5 or
-     v_choch_signal > 0.5 or
-     (v_global_bull and v_itf_bull) or
-     v_regime == 3.0 or
-     (not na(hint_tp2_price) and low <= hint_tp2_price) or
-     (not na(hint_sl_price) and high >= hint_sl_price)))
+// ── Условия выхода ──
+// V276: При подключённом ENGINE выход определяется ТОЛЬКО по смене sim-состояния ENGINE,
+// чтобы избежать рассинхронизации (VISUAL выходил раньше ENGINE → цикл входов/выходов на каждом баре).
+// Собственные условия (BOS/тренд/режим/TP/SL) применяются только в fallback-режиме без ENGINE.
+bool _exit_long_ok  = _eng_exited_long
+bool _exit_short_ok = _eng_exited_short
 
 // Fallback: if ENGINE not connected, use zone-based hints
 if not use_engine_data
@@ -383,43 +373,47 @@ if not use_engine_data
 float _hint_saved_entry = hint_entry_price
 
 // ── Переключение состояния ──
+// V276: Все переходы состояния подсказок выполняются ТОЛЬКО на подтверждённых барах.
+// Это предотвращает создание меток на незакрытых (real-time) барах
+// и обеспечивает стабильное состояние hint_state между тиками.
 bool hint_entry_long  = false
 bool hint_entry_short = false
 bool hint_exit_long   = false
 bool hint_exit_short  = false
 
-if _entry_long_ok
-    hint_entry_long  := true
-    hint_state       := 1
-    hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
-    hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
-    hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
-    hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
-    hint_entry_bar   := bar_index
-else if _entry_short_ok
-    hint_entry_short := true
-    hint_state       := -1
-    hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
-    hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
-    hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
-    hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
-    hint_entry_bar   := bar_index
-else if _exit_long_ok
-    hint_exit_long   := true
-    hint_state       := 0
-    hint_entry_price := na
-    hint_sl_price    := na
-    hint_tp1_price   := na
-    hint_tp2_price   := na
-    hint_entry_bar   := na
-else if _exit_short_ok
-    hint_exit_short  := true
-    hint_state       := 0
-    hint_entry_price := na
-    hint_sl_price    := na
-    hint_tp1_price   := na
-    hint_tp2_price   := na
-    hint_entry_bar   := na
+if barstate.isconfirmed
+    if _entry_long_ok
+        hint_entry_long  := true
+        hint_state       := 1
+        hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
+        hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
+        hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
+        hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
+        hint_entry_bar   := bar_index
+    else if _entry_short_ok
+        hint_entry_short := true
+        hint_state       := -1
+        hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
+        hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
+        hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
+        hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
+        hint_entry_bar   := bar_index
+    else if _exit_long_ok
+        hint_exit_long   := true
+        hint_state       := 0
+        hint_entry_price := na
+        hint_sl_price    := na
+        hint_tp1_price   := na
+        hint_tp2_price   := na
+        hint_entry_bar   := na
+    else if _exit_short_ok
+        hint_exit_short  := true
+        hint_state       := 0
+        hint_entry_price := na
+        hint_sl_price    := na
+        hint_tp1_price   := na
+        hint_tp2_price   := na
+        hint_entry_bar   := na
 
 // ==========================================
 // Производные значения (защищено через f_safe_div)
