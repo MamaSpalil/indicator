@@ -188,11 +188,9 @@ eng_hurst        = input.source(close, "VIS: Hurst",          tooltip="ENG: Hurs
 eng_cvd_div      = input.source(close, "VIS: CVD Div",        tooltip="ENG: CVD Div | 1=bullish div, -1=bearish div, 0=none", group=group_eng)
 // V273: New ENGINE channels — Market Microstructure & Structure Breaks
 eng_poc_price    = input.source(close, "VIS: POC Price",      tooltip="ENG: POC Price | Volume Profile Point of Control price level", group=group_eng)
-eng_vcp          = input.source(close, "VIS: VCP",            tooltip="ENG: VCP | 1=Volume Contraction Pattern detected, 0=none", group=group_eng)
-eng_squeeze      = input.source(close, "VIS: Squeeze",        tooltip="ENG: Squeeze | 1=Keltner Squeeze active, 0=none", group=group_eng)
-eng_absorption   = input.source(close, "VIS: Absorption",     tooltip="ENG: Absorption | 1=Institutional absorption detected, 0=none", group=group_eng)
-eng_bos_signal   = input.source(close, "VIS: BOS Signal",     tooltip="ENG: BOS Signal | 1=bullish BOS, -1=bearish BOS, 0=none", group=group_eng)
-eng_choch_signal = input.source(close, "VIS: CHoCH Signal",   tooltip="ENG: CHoCH Signal | 1=bullish CHoCH, -1=bearish CHoCH, 0=none", group=group_eng)
+// V273-fix: combined channels — decode VCP/Squeeze/Absorption bitmask and BOS/CHoCH encoded value
+eng_micro_combo  = input.source(close, "VIS: Micro Combo",    tooltip="ENG: Micro Combo | Bitmask: bit2=VCP, bit1=Squeeze, bit0=Absorption (0-7)", group=group_eng)
+eng_struct_combo = input.source(close, "VIS: Struct Combo",   tooltip="ENG: Struct Combo | BOS×10 + CHoCH. BOS: ±10, CHoCH: ±1", group=group_eng)
 eng_version      = input.source(close, "VIS: Version",      tooltip="ENG: Version | Ожидается: 273.0. Протокол совместимости", group=group_eng)
 
 // ── Переключатель: использовать данные из ENGINE или локальные fallback ──────
@@ -259,11 +257,15 @@ float v_cvd_div      = use_engine_data ? eng_cvd_div       : 0.0
 
 // V273: New channel decoders — Market Microstructure & Structure Breaks
 float v_poc_price    = use_engine_data ? eng_poc_price     : na
-float v_vcp          = use_engine_data ? eng_vcp           : 0.0
-float v_squeeze      = use_engine_data ? eng_squeeze       : 0.0
-float v_absorption   = use_engine_data ? eng_absorption    : 0.0
-float v_bos_signal   = use_engine_data ? eng_bos_signal    : 0.0
-float v_choch_signal = use_engine_data ? eng_choch_signal  : 0.0
+// V273-fix: decode combined bitmask channel (bit2=VCP, bit1=Squeeze, bit0=Absorption)
+float _micro_raw     = use_engine_data ? math.round(eng_micro_combo) : 0.0
+float v_vcp          = _micro_raw >= 4.0 ? 1.0 : 0.0
+float v_squeeze      = math.floor(_micro_raw % 4.0) >= 2.0 ? 1.0 : 0.0
+float v_absorption   = math.floor(_micro_raw % 2.0) >= 1.0 ? 1.0 : 0.0
+// V273-fix: decode combined BOS+CHoCH channel (BOS×10 + CHoCH)
+float _struct_raw    = use_engine_data ? math.round(eng_struct_combo) : 0.0
+float v_bos_signal   = _struct_raw >= 5.0 ? 1.0 : _struct_raw <= -5.0 ? -1.0 : 0.0
+float v_choch_signal = _struct_raw - (v_bos_signal * 10.0)
 
 // V269: New channel decoders (stochastic, risk, version)
 float v_stoch_mu     = use_engine_data ? eng_stoch_mu     : 0.0

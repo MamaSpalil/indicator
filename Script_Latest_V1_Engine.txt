@@ -2597,8 +2597,10 @@ f_kama(float src, int len) =>
 f_hurst_exponent(int period) =>
     int safe_p = math.min(period, MAX_OFFSET - 1)
     float h_val = 0.5
+    // V273-fix: extract ta.sma/ta.stdev outside conditional for per-bar consistency
+    float mean_c = ta.sma(close, safe_p)
+    float std_c = ta.stdev(close, safe_p)
     if safe_p >= 10
-        float mean_c = ta.sma(close, safe_p)
         float cumdev_max = 0.0
         float cumdev_min = 0.0
         float cumdev = 0.0
@@ -2608,7 +2610,6 @@ f_hurst_exponent(int period) =>
             cumdev_max := math.max(cumdev_max, cumdev)
             cumdev_min := math.min(cumdev_min, cumdev)
         float rs_range = cumdev_max - cumdev_min
-        float std_c = ta.stdev(close, safe_p)
         float rs = std_c > 0 ? f_safe_div(rs_range, std_c) : 0.0
         if rs > 0
             h_val := f_safe_div(math.log(rs), math.log(float(safe_p)))
@@ -4405,6 +4406,16 @@ f_create_new_zones() =>
     max_bars_back(_mem_atr,  MAX_BUFF)
     max_bars_back(_mem_rvol, MAX_BUFF)
     max_bars_back(_mem_rsi,  MAX_BUFF)
+    // V273-fix: pre-compute ta-dependent functions outside conditionals for per-bar consistency
+    bool _pre_absorption = f_detect_absorption()
+    bool _pre_squeeze    = f_keltner_squeeze(20)
+    // V273-fix: pre-compute f_rz_rspike_scan outside conditionals for per-bar consistency
+    int _pre_rz_off_b  = not na(last_sl_i) ? (bar_index - last_sl_i) : 0
+    int _pre_rz_safe_b = f_clamp(_pre_rz_off_b, MAX_OFFSET)
+    bool _pre_rspike_b = f_rz_rspike_scan(_pre_rz_safe_b, true, _mem_rvol)
+    int _pre_rz_off_s  = not na(last_sh_i) ? (bar_index - last_sh_i) : 0
+    int _pre_rz_safe_s = f_clamp(_pre_rz_off_s, MAX_OFFSET)
+    bool _pre_rspike_s = f_rz_rspike_scan(_pre_rz_safe_s, false, _mem_rvol)
     
     bool allow        = (not use_adx or not global_flat)
     bool confirmed_bar = barstate.isconfirmed
@@ -4524,11 +4535,11 @@ f_create_new_zones() =>
                     n.score := math.min(n.score + conf_score_b, 150.0)
                     n.tier := f_tier(n.score)
                 // V273: Absorption bonus (institutional absorption near zone)
-                if f_detect_absorption()
+                if _pre_absorption
                     n.score := math.min(n.score + 10.0, 150.0)
                     n.tier := f_tier(n.score)
                 // V273: Keltner squeeze bonus (momentum building)
-                if f_keltner_squeeze(20)
+                if _pre_squeeze
                     n.score := math.min(n.score + 8.0, 150.0)
                     n.tier := f_tier(n.score)
                 // V270: Regime at creation
@@ -4636,11 +4647,11 @@ f_create_new_zones() =>
                     n.score := math.min(n.score + conf_score_s, 150.0)
                     n.tier := f_tier(n.score)
                 // V273: Absorption bonus (institutional absorption near zone)
-                if f_detect_absorption()
+                if _pre_absorption
                     n.score := math.min(n.score + 10.0, 150.0)
                     n.tier := f_tier(n.score)
                 // V273: Keltner squeeze bonus (momentum building)
-                if f_keltner_squeeze(20)
+                if _pre_squeeze
                     n.score := math.min(n.score + 8.0, 150.0)
                     n.tier := f_tier(n.score)
                 // V270: Regime at creation
@@ -4705,7 +4716,7 @@ f_create_new_zones() =>
                     int rz_pin_count_b = f_rz_pin_scan(rz_safe_b, true)
                     if rz_pin_count_b >= inp_min_pinbars
                         rz_score += math.min(15.0, float(rz_pin_count_b) * 5.0)
-                    bool rz_rspike_b = f_rz_rspike_scan(rz_safe_b, true, _mem_rvol)
+                    bool rz_rspike_b = _pre_rspike_b
                     if rz_rspike_b
                         rz_score += 10.0
                     // V260: Unified pattern counting, naming & scoring via helper
@@ -4779,7 +4790,7 @@ f_create_new_zones() =>
                     int rz_pin_count_s = f_rz_pin_scan(rz_safe_s, false)
                     if rz_pin_count_s >= inp_min_pinbars
                         rz_score_s += math.min(15.0, float(rz_pin_count_s) * 5.0)
-                    bool rz_rspike_s = f_rz_rspike_scan(rz_safe_s, false, _mem_rvol)
+                    bool rz_rspike_s = _pre_rspike_s
                     if rz_rspike_s
                         rz_score_s += 10.0
                     // V260: Unified pattern counting, naming & scoring via helper
@@ -5590,11 +5601,10 @@ plot(nz(_hurst_val, 0.5),               "ENG: Hurst",        color=color.new(#00
 plot(nz(cvd_div_signal, 0.0),           "ENG: CVD Div",      color=color.new(#000000, 100))
 // V273: Additional export channels
 plot(nz(_poc_price, 0.0),               "ENG: POC Price",    color=color.new(#000000, 100))
-plot(_is_vcp ? 1.0 : 0.0,              "ENG: VCP",          color=color.new(#000000, 100))
-plot(_is_squeeze ? 1.0 : 0.0,          "ENG: Squeeze",      color=color.new(#000000, 100))
-plot(_is_absorption ? 1.0 : 0.0,       "ENG: Absorption",   color=color.new(#000000, 100))
-plot(bos_bull ? 1.0 : bos_bear ? -1.0 : 0.0, "ENG: BOS Signal", color=color.new(#000000, 100))
-plot(choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0, "ENG: CHoCH Signal", color=color.new(#000000, 100))
+// V273-fix: combined VCP+Squeeze+Absorption into bitmask (bit2=VCP, bit1=Squeeze, bit0=Absorption) to stay within 64 plot limit
+plot((_is_vcp ? 4.0 : 0.0) + (_is_squeeze ? 2.0 : 0.0) + (_is_absorption ? 1.0 : 0.0), "ENG: Micro Combo", color=color.new(#000000, 100))
+// V273-fix: combined BOS+CHoCH into single channel (BOS*10 + CHoCH) to stay within 64 plot limit
+plot((bos_bull ? 10.0 : bos_bear ? -10.0 : 0.0) + (choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0), "ENG: Struct Combo", color=color.new(#000000, 100))
 //plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
 // V273: Protocol version — active channel for VISUAL version check
 plot(273.0,                              "ENG: Version",      color=color.new(#000000, 100))
