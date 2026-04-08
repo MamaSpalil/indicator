@@ -5706,7 +5706,7 @@ var line _pd_ln_m = na
 var box  _pd_bx_u = na
 var box  _pd_bx_l = na
 if use_pd
-    bool _pd_chg = na(_pd_ln_h) or pd_high != nz(pd_high[1]) or pd_low != nz(pd_low[1])
+    bool _pd_chg = na(_pd_ln_h) or pd_high != nz(pd_high[1]) or pd_low != nz(pd_low[1]) or pd_mid != nz(pd_mid[1])
     if _pd_chg
         _pd_ln_h := line.new(bar_index, pd_high, bar_index, pd_high, color=color.new(color.red,   70))
         _pd_ln_l := line.new(bar_index, pd_low,  bar_index, pd_low,  color=color.new(color.green, 70))
