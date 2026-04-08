@@ -467,8 +467,10 @@ plot(-v_drawdown, "Drawdown %", color=color.new(color.red, 50), linewidth=1, dis
 alertcondition(not na(v_top1_dist) and v_top1_dist >= 0 and v_top1_dist < 1.0 and v_top1_score >= 100, title="🔔 Price near BEST zone", message="🔔 Цена подходит к BEST зоне (< 1 ATR)")
 alertcondition(v_cvd_div != 0, title="⚡ CVD Divergence detected", message="⚡ CVD дивергенция обнаружена — потенциальный разворот")
 // V273: New alert conditions for BOS/CHoCH and Squeeze
-alertcondition(v_bos_signal != 0, title="📊 BOS Signal", message="📊 Break of Structure: " + (v_bos_signal > 0 ? "Bullish" : "Bearish"))
-alertcondition(v_choch_signal != 0, title="🔄 CHoCH Signal", message="🔄 Change of Character: " + (v_choch_signal > 0 ? "Bullish" : "Bearish"))
+alertcondition(v_bos_signal > 0, title="📊 BOS Bullish", message="📊 Break of Structure: Bullish")
+alertcondition(v_bos_signal < 0, title="📊 BOS Bearish", message="📊 Break of Structure: Bearish")
+alertcondition(v_choch_signal > 0, title="🔄 CHoCH Bullish", message="🔄 Change of Character: Bullish")
+alertcondition(v_choch_signal < 0, title="🔄 CHoCH Bearish", message="🔄 Change of Character: Bearish")
 alertcondition(v_squeeze > 0.5, title="🔸 Keltner Squeeze", message="🔸 Keltner Squeeze активен — сжатие волатильности, ожидается импульс")
 alertcondition(v_mc_dd95 > 30, title="⚠️ Monte Carlo DD >30%", message="⚠️ Monte Carlo 95th percentile drawdown превысил 30%")
 
