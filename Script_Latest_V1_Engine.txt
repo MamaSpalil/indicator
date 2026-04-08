@@ -1659,11 +1659,9 @@ else if is_bear_bos
     temp_high := high
     pd_mid    := math.avg(pd_high, pd_low)
 
-p_h = plot(use_pd ? pd_high : na, "PD High", display=display.none)
-p_l = plot(use_pd ? pd_low  : na, "PD Low",  display=display.none)
-p_m = plot(use_pd ? pd_mid  : na, "PD Mid",  color=color.new(color.gray, 50), style=plot.style_circles)
-fill(p_h, p_m, color=use_pd ? color.new(color.red,   90) : na)
-fill(p_m, p_l, color=use_pd ? color.new(color.green, 90) : na)
+// PD plots moved after ENG: export channels — see plot section at end of file.
+// (Keeping PD plots before ENG: channels shifted auto-assign mapping by 3 positions,
+//  causing VISUAL's eng_version to receive pd_high instead of 273.0)
 
 // ==========================================
 // БЛОК 5: TYPES & METHODS (V249: УЛУЧШЕННЫЙ PIVOT MATH + ВИЗУАЛИЗАЦИЯ)
@@ -5610,5 +5608,11 @@ plot((_is_vcp ? 4.0 : 0.0) + (_is_squeeze ? 2.0 : 0.0) + (_is_absorption ? 1.0 :
 // V273-fix: combined BOS+CHoCH into single channel (BOS*10 + CHoCH) to stay within 64 plot limit
 plot((bos_bull ? 10.0 : bos_bear ? -10.0 : 0.0) + (choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0), "ENG: Struct Combo", color=color.new(#000000, 100))
 //plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
+// ── PD plots (перенесены ПОСЛЕ ENG: каналов, чтобы не сбивать auto-assign порядок) ──
+p_h = plot(use_pd ? pd_high : na, "PD High", display=display.none)
+p_l = plot(use_pd ? pd_low  : na, "PD Low",  display=display.none)
+p_m = plot(use_pd ? pd_mid  : na, "PD Mid",  color=color.new(color.gray, 50), style=plot.style_circles)
+fill(p_h, p_m, color=use_pd ? color.new(color.red,   90) : na)
+fill(p_m, p_l, color=use_pd ? color.new(color.green, 90) : na)
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)

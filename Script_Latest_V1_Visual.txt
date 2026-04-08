@@ -18,6 +18,10 @@ f_ts(float v) => str.tostring(v)
 f_safe_div(float num, float den, float eps = 1e-9) =>
     math.abs(den) < eps ? 0.0 : num / den
 
+// Классификация зоны по Score → текстовый тир
+f_hint_tier(float score) =>
+    score >= 100 ? "BEST" : score >= 80 ? "STRONG" : score >= 40 ? "NORMAL" : "PIVOT"
+
 // ==========================================
 // БЛОК 1: Данные — локальные вычисления + значения по умолчанию из ENGINE
 // ==========================================
@@ -126,7 +130,12 @@ zone_max_age     = input.int(3500, "Макс. возраст зоны (бары)
 use_asset_adapt  = input.bool(true, "Авто-адаптация к инструменту", group=group_opts)
 stoch_min_val    = input.int(5, "Мин. зон для прогноза", minval=3, maxval=50, group=group_opts)
 
-// ── ENGINE Data Sources ─────────────────────────────────────────────────────
+group_hints = "💡 Торговые подсказки"
+show_hints       = input.bool(true, "Показывать подсказки входа/выхода", tooltip="Подсказки в реальном времени: вход в зонах поддержки/сопротивления, выход при структурных сигналах. Чередование: вход → выход → вход → ...", group=group_hints)
+hint_zone_dist   = input.float(2.0, "Макс. дистанция до зоны (ATR)", minval=0.5, maxval=5.0, step=0.5, tooltip="Максимальное расстояние от цены до зоны для сигнала входа (в единицах ATR)", group=group_hints)
+hint_min_score   = input.int(40, "Мин. Score зоны", minval=10, maxval=150, step=10, tooltip="Минимальный балл зоны для генерации подсказки на вход", group=group_hints)
+
+// ── ENGINE Data Sources─────────────────────────────────────────────────────
 // Подключите ENGINE plot-каналы через input.source() в настройках индикатора.
 // При подключённом ENGINE — данные используются автоматически (определяется по каналу Version).
 // СПОСОБ 1 (быстрый): Добавьте VISUAL поверх ENGINE (drag&drop) — каналы подключатся автоматически
@@ -288,6 +297,82 @@ float v_eng_version  = eng_version
 
 // V273: Version compatibility check (uses auto-detection constant from line 138)
 bool  v_version_ok   = not use_engine_data or (math.round(v_eng_version) == EXPECTED_ENG_VERSION)
+
+// ==========================================
+// БЛОК 2.5: ТОРГОВЫЕ ПОДСКАЗКИ — ЛОГИКА (Entry/Exit State Machine)
+// ==========================================
+// Подсказки в реальном времени: вход/выход на основе зон поддержки/сопротивления.
+// Если предыдущая подсказка = вход → следующая = выход.
+// Если предыдущей подсказки нет → подсказка на вход.
+// State: 0 = ожидание входа, 1 = в LONG (ожидание выхода), -1 = в SHORT (ожидание выхода)
+var int   hint_state       = 0
+var float hint_entry_price = na
+var int   hint_entry_bar   = na
+
+// Сброс при отключении ENGINE (данные зон недоступны)
+if not use_engine_data and hint_state != 0
+    hint_state       := 0
+    hint_entry_price := na
+    hint_entry_bar   := na
+
+// Проверки зон
+bool _hint_has_zone        = not na(v_top1_price) and v_top1_score >= hint_min_score
+bool _hint_zone_near       = _hint_has_zone and not na(v_top1_dist) and v_top1_dist >= -0.5 and v_top1_dist <= hint_zone_dist
+bool _hint_zone_is_support = _hint_has_zone and v_top1_price < close
+bool _hint_zone_is_resist  = _hint_has_zone and v_top1_price > close
+bool _hint_vwap_ok         = not na(v_vwap_val)
+
+// ── Условия входа (state == 0) ──
+bool _entry_long_ok = hint_state == 0 and _hint_zone_near and _hint_zone_is_support and
+     (v_global_bull or v_itf_bull) and _hint_vwap_ok and close >= v_vwap_val and v_regime != 3.0
+
+bool _entry_short_ok = hint_state == 0 and _hint_zone_near and _hint_zone_is_resist and
+     (v_global_bear or v_itf_bear) and _hint_vwap_ok and close <= v_vwap_val and v_regime != 3.0
+
+// ── Условия выхода (state == 1 для LONG, -1 для SHORT) ──
+bool _exit_long_ok = hint_state == 1 and (
+     v_bos_signal < -0.5 or
+     v_choch_signal < -0.5 or
+     (v_global_bear and v_itf_bear) or
+     v_regime == 3.0 or
+     (_hint_zone_near and _hint_zone_is_resist))
+
+bool _exit_short_ok = hint_state == -1 and (
+     v_bos_signal > 0.5 or
+     v_choch_signal > 0.5 or
+     (v_global_bull and v_itf_bull) or
+     v_regime == 3.0 or
+     (_hint_zone_near and _hint_zone_is_support))
+
+// Захват данных до смены состояния (для расчёта P&L при выходе)
+float _hint_saved_entry = hint_entry_price
+
+// ── Переключение состояния ──
+bool hint_entry_long  = false
+bool hint_entry_short = false
+bool hint_exit_long   = false
+bool hint_exit_short  = false
+
+if _entry_long_ok
+    hint_entry_long  := true
+    hint_state       := 1
+    hint_entry_price := close
+    hint_entry_bar   := bar_index
+else if _entry_short_ok
+    hint_entry_short := true
+    hint_state       := -1
+    hint_entry_price := close
+    hint_entry_bar   := bar_index
+else if _exit_long_ok
+    hint_exit_long   := true
+    hint_state       := 0
+    hint_entry_price := na
+    hint_entry_bar   := na
+else if _exit_short_ok
+    hint_exit_short  := true
+    hint_state       := 0
+    hint_entry_price := na
+    hint_entry_bar   := na
 
 // ==========================================
 // Производные значения (защищено через f_safe_div)
@@ -457,6 +542,11 @@ if barstate.islast and show_dash
         color  struct_col = (v_bos_signal != 0 or v_choch_signal != 0) ? (v_bos_signal > 0 or v_choch_signal > 0 ? color.lime : color.red) : color.white
         f_dr(38, "Structure Breaks", struct_txt, color.gray, struct_col, t_sz)
 
+        // Trade Hint status row
+        string hint_status_txt = hint_state == 1 ? "🟢 IN LONG @ " + f_mt(nz(hint_entry_price, close)) : hint_state == -1 ? "🔴 IN SHORT @ " + f_mt(nz(hint_entry_price, close)) : "⏳ Ожидание входа"
+        color  hint_status_col = hint_state == 1 ? color.lime : hint_state == -1 ? color.red : color.gray
+        f_dr(39, "Trade Hint", show_hints ? hint_status_txt : "OFF", color.aqua, show_hints ? hint_status_col : color.gray, t_sz)
+
         // V270: Version compatibility warning
         if use_engine_data and not v_version_ok
             f_dr(40, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
@@ -473,6 +563,43 @@ plot(v_equity_curve, "Equity Curve", color=color.new(color.lime, 30), linewidth=
 float v_peak_eq = ta.highest(v_equity_curve, 500)
 float v_drawdown = v_peak_eq > 0 ? f_safe_div(v_peak_eq - v_equity_curve, v_peak_eq) * 100.0 : 0.0
 plot(-v_drawdown, "Drawdown %", color=color.new(color.red, 50), linewidth=1, display=display.pane)
+
+// ==========================================
+// БЛОК 5: ВИЗУАЛИЗАЦИЯ ТОРГОВЫХ ПОДСКАЗОК
+// ==========================================
+if show_hints
+    if hint_entry_long
+        string _el_txt = "🟢 ВХОД LONG\n" + f_mt(close) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
+        label.new(bar_index, low, _el_txt,
+             style=label.style_label_up, color=color.new(#00C853, 10),
+             textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
+    if hint_entry_short
+        string _es_txt = "🔴 ВХОД SHORT\n" + f_mt(close) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
+        label.new(bar_index, high, _es_txt,
+             style=label.style_label_down, color=color.new(#FF1744, 10),
+             textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
+    if hint_exit_long
+        float _pnl_l = close - nz(_hint_saved_entry, close)
+        string _pnl_l_txt = (_pnl_l >= 0 ? "+" : "") + f_mt(_pnl_l)
+        string _reason_l = v_bos_signal < -0.5 ? "BOS ↓" : v_choch_signal < -0.5 ? "CHoCH ↓" : (v_global_bear and v_itf_bear) ? "Тренд ↓" : v_regime == 3.0 ? "Волатильность" : "Зона сопр."
+        string _xl_txt = "⬜ ВЫХОД LONG\n" + f_mt(close) + "\nP&L: " + _pnl_l_txt + "\n" + _reason_l
+        label.new(bar_index, high, _xl_txt,
+             style=label.style_label_down, color=color.new(#78909C, 10),
+             textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
+    if hint_exit_short
+        float _pnl_s = nz(_hint_saved_entry, close) - close
+        string _pnl_s_txt = (_pnl_s >= 0 ? "+" : "") + f_mt(_pnl_s)
+        string _reason_s = v_bos_signal > 0.5 ? "BOS ↑" : v_choch_signal > 0.5 ? "CHoCH ↑" : (v_global_bull and v_itf_bull) ? "Тренд ↑" : v_regime == 3.0 ? "Волатильность" : "Зона подд."
+        string _xs_txt = "⬜ ВЫХОД SHORT\n" + f_mt(close) + "\nP&L: " + _pnl_s_txt + "\n" + _reason_s
+        label.new(bar_index, low, _xs_txt,
+             style=label.style_label_up, color=color.new(#78909C, 10),
+             textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
+
+// V274: Alert conditions for trade hints
+alertcondition(hint_entry_long, title="💡 Hint: ВХОД LONG", message="💡 Подсказка: ВХОД LONG — цена у зоны поддержки, тренд бычий")
+alertcondition(hint_entry_short, title="💡 Hint: ВХОД SHORT", message="💡 Подсказка: ВХОД SHORT — цена у зоны сопротивления, тренд медвежий")
+alertcondition(hint_exit_long, title="💡 Hint: ВЫХОД LONG", message="💡 Подсказка: ВЫХОД LONG — структурный сигнал на закрытие позиции")
+alertcondition(hint_exit_short, title="💡 Hint: ВЫХОД SHORT", message="💡 Подсказка: ВЫХОД SHORT — структурный сигнал на закрытие позиции")
 
 // V270: Alert conditions
 alertcondition(not na(v_top1_dist) and v_top1_dist >= 0 and v_top1_dist < 1.0 and v_top1_score >= 100, title="🔔 Price near BEST zone", message="🔔 Цена подходит к BEST зоне (< 1 ATR)")
