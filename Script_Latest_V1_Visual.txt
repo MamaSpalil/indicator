@@ -21,7 +21,8 @@ f_safe_div(float num, float den, float eps = 1e-9) =>
 // ==========================================
 // БЛОК 1: Данные — локальные вычисления + значения по умолчанию из ENGINE
 // ==========================================
-// При подключении ENGINE: выберите соответствующий plot (ENG: ...) в настройках input.source()
+// При подключении ENGINE: подключите VIS: Version → ENG: Version для автоопределения,
+// затем подключите остальные каналы. Система автоматически определит ENGINE.
 // При автономной работе: используются локальные fallback-значения (рассчитанные ниже)
 
 // ── Базовые расчёты (соответствуют ENGINE — fallback для автономного режима) ──
@@ -127,74 +128,76 @@ stoch_min_val    = input.int(5, "Мин. зон для прогноза", minval
 
 // ── ENGINE Data Sources ─────────────────────────────────────────────────────
 // Подключите ENGINE plot-каналы через input.source() в настройках индикатора.
+// При подключённом ENGINE — данные используются автоматически (определяется по каналу Version).
+// ШАГ 1: Подключите "VIS: Version" → "Trading Fluppy ENGINE: ENG: Version"
+// ШАГ 2: Подключите остальные каналы в том же порядке.
 // Если ENGINE не подключён — используются локальные fallback-значения.
-group_eng = "🔗 ENGINE Data (input.source)"
-eng_z_score      = input.source(close, "VIS: Z-Score",      tooltip="ENG: Z-Score | Диапазон: -10..+10 σ. Нормализованная аномальность тела свечи", group=group_eng)
-eng_rvol         = input.source(close, "VIS: RVOL",         tooltip="ENG: RVOL | Диапазон: 0..∞ (типично 0.1-5.0×). Относительный объём", group=group_eng)
-eng_htf_trend    = input.source(close, "VIS: HTF Trend",    tooltip="ENG: HTF Trend | Значения: -1 (bear), 0 (flat), 1 (bull)", group=group_eng)
-eng_itf_trend    = input.source(close, "VIS: ITF Trend",    tooltip="ENG: ITF Trend | Значения: -1 (bear), 0 (flat), 1 (bull)", group=group_eng)
-eng_major_bos    = input.source(close, "VIS: Major BOS",    tooltip="ENG: Major BOS | Значения: 0 (bear), 1 (bull). Break of Structure", group=group_eng)
-eng_vwap         = input.source(close, "VIS: VWAP",         tooltip="ENG: VWAP | Диапазон: цена актива. Volume-Weighted Average Price", group=group_eng)
-eng_dist_bull    = input.source(close, "VIS: Dist Bull",    tooltip="ENG: Dist Bull | Диапазон: 0..∞ тиков. Расстояние до бычьего пробоя", group=group_eng)
-eng_dist_bear    = input.source(close, "VIS: Dist Bear",    tooltip="ENG: Dist Bear | Диапазон: 0..∞ тиков. Расстояние до медвежьего пробоя", group=group_eng)
-eng_stoch_prob   = input.source(close, "VIS: Stoch Prob",   tooltip="ENG: Stoch Prob | Диапазон: 0.1-99.9%. Вероятность стохастической модели", group=group_eng)
-eng_stoch_n      = input.source(close, "VIS: Stoch N",      tooltip="ENG: Stoch N | Диапазон: 0-50. Количество зон в выборке", group=group_eng)
-eng_stoch_disc   = input.source(close, "VIS: Stoch Disc",   tooltip="ENG: Stoch Disc | Диапазон: 0-0.25. Скидка при высокой вероятности", group=group_eng)
-eng_trades       = input.source(close, "VIS: Trades",       tooltip="ENG: Trades | Диапазон: 0..∞. Всего закрытых сделок", group=group_eng)
-eng_wins         = input.source(close, "VIS: Wins",         tooltip="ENG: Wins | Диапазон: 0..∞. Количество выигрышных сделок", group=group_eng)
-eng_gross_profit = input.source(close, "VIS: Gross Profit", tooltip="ENG: Gross Profit | Диапазон: 0..∞. Валовая прибыль", group=group_eng)
-eng_gross_loss   = input.source(close, "VIS: Gross Loss",   tooltip="ENG: Gross Loss | Диапазон: 0..∞ (абс.). Валовый убыток", group=group_eng)
-eng_equity       = input.source(close, "VIS: Equity",       tooltip="ENG: Equity | Диапазон: >0. Текущий капитал стратегии", group=group_eng)
-eng_dd_pct       = input.source(close, "VIS: DD%",          tooltip="ENG: DD% | Диапазон: 0-100%. Текущая просадка", group=group_eng)
-eng_zones_sup    = input.source(close, "VIS: Zones Sup",    tooltip="ENG: Zones Sup | Диапазон: 0-50. Активные зоны поддержки", group=group_eng)
-eng_zones_res    = input.source(close, "VIS: Zones Res",    tooltip="ENG: Zones Res | Диапазон: 0-50. Активные зоны сопротивления", group=group_eng)
-eng_zones_bb     = input.source(close, "VIS: Zones BB",     tooltip="ENG: Zones BB | Диапазон: 0-50. Активные Breaker Blocks", group=group_eng)
-eng_zones_rz     = input.source(close, "VIS: Zones RZ",     tooltip="ENG: Zones RZ | Диапазон: 0-50. Активные Rejection Zones", group=group_eng)
-eng_safe_pv      = input.source(close, "VIS: Safe PV",      tooltip="ENG: Safe PV | Диапазон: ≥1.0. Point Value для фьючерсов", group=group_eng)
-eng_vol_ratio    = input.source(close, "VIS: Vol Ratio",    tooltip="ENG: Vol Ratio | Диапазон: 0.3-3.0. ATR/ATR_slow волатильность", group=group_eng)
-eng_htf_vol      = input.source(close, "VIS: HTF Vol",      tooltip="ENG: HTF Vol | Диапазон: 0.5-3.0. HTF волатильность контекст", group=group_eng)
-eng_max_hist     = input.source(close, "VIS: Max Hist",     tooltip="ENG: Max Hist | Диапазон: 500-4999. Глубина истории в барах", group=group_eng)
-eng_pivot_l_sup  = input.source(close, "VIS: Pivot L Sup",  tooltip="ENG: Pivot L Sup | Диапазон: 1-4999. Левое плечо пивота поддержки", group=group_eng)
-eng_pivot_r_sup  = input.source(close, "VIS: Pivot R Sup",  tooltip="ENG: Pivot R Sup | Диапазон: 1-4999. Правое плечо пивота поддержки", group=group_eng)
-eng_pivot_l_res  = input.source(close, "VIS: Pivot L Res",  tooltip="ENG: Pivot L Res | Диапазон: 1-4999. Левое плечо пивота сопротивления", group=group_eng)
-eng_pivot_r_res  = input.source(close, "VIS: Pivot R Res",  tooltip="ENG: Pivot R Res | Диапазон: 1-4999. Правое плечо пивота сопротивления", group=group_eng)
-eng_fvg_min      = input.source(close, "VIS: FVG Min",      tooltip="ENG: FVG Min | Диапазон: 0.0001-5.0 (×ATR). Минимальный FVG", group=group_eng)
-eng_fvg_max      = input.source(close, "VIS: FVG Max",      tooltip="ENG: FVG Max | Диапазон: 0.5-20.0 (×ATR). Максимальный FVG", group=group_eng)
-eng_confluence   = input.source(close, "VIS: Confluence",   tooltip="ENG: Confluence | Диапазон: 1-10. Мин. факторов для входа", group=group_eng)
-// V269: Missing ENGINE channels added
-eng_ob_len_sup   = input.source(close, "VIS: OB Len Sup",   tooltip="ENG: OB Len Sup | Диапазон: 1-20. Cluster size для поддержки", group=group_eng)
-eng_ob_len_res   = input.source(close, "VIS: OB Len Res",   tooltip="ENG: OB Len Res | Диапазон: 1-20. Cluster size для сопротивления", group=group_eng)
-eng_cluster_tol  = input.source(close, "VIS: Cluster Tol",  tooltip="ENG: Cluster Tol | Диапазон: 0.1-5.0 (×ATR). Noise tolerance", group=group_eng)
-eng_inv_dist_sup = input.source(close, "VIS: Inv Dist Sup", tooltip="ENG: Inv Dist Sup | Расстояние инвалидации Support (ATR)", group=group_eng)
-eng_inv_dist_res = input.source(close, "VIS: Inv Dist Res", tooltip="ENG: Inv Dist Res | Расстояние инвалидации Resistance (ATR)", group=group_eng)
-eng_z_min        = input.source(close, "VIS: Z Min",        tooltip="ENG: Z Min | Диапазон: 0.1-5.0. Минимальный Z-Score порог", group=group_eng)
-eng_z_max        = input.source(close, "VIS: Z Max",        tooltip="ENG: Z Max | Диапазон: 1.0-15.0. Максимальный Z-Score порог", group=group_eng)
-eng_vol_max      = input.source(close, "VIS: Vol Max",      tooltip="ENG: Vol Max | Диапазон: 1.0-10.0. Максимальный RVOL порог", group=group_eng)
-// V269: New ENGINE channels
-eng_stoch_mu     = input.source(close, "VIS: Stoch Mu",     tooltip="ENG: Stoch Mu | Диапазон: >0 баров. Среднее время между зонами", group=group_eng)
-eng_stoch_sigma  = input.source(close, "VIS: Stoch Sigma",  tooltip="ENG: Stoch Sigma | Диапазон: ≥0. Стд.откл. времени между зонами", group=group_eng)
-eng_stoch_eta    = input.source(close, "VIS: Stoch Eta",    tooltip="ENG: Stoch Eta | Диапазон: ≥0 баров. Ожидаемое время до зоны", group=group_eng)
-eng_kelly_f      = input.source(close, "VIS: Kelly F",      tooltip="ENG: Kelly F | Диапазон: 0-1.0. Kelly Criterion оптимальная доля", group=group_eng)
-eng_sharpe       = input.source(close, "VIS: Sharpe",       tooltip="ENG: Sharpe | Диапазон: -∞..+∞ (годовой). Sharpe Ratio", group=group_eng)
-eng_sortino      = input.source(close, "VIS: Sortino",      tooltip="ENG: Sortino | Диапазон: -∞..+∞ (годовой). Sortino Ratio", group=group_eng)
-eng_mc_dd95      = input.source(close, "VIS: MC DD95",      tooltip="ENG: MC DD95 | Диапазон: 0-100%. Monte Carlo 95th pctile drawdown", group=group_eng)
-eng_equity_curve = input.source(close, "VIS: Equity Curve",  tooltip="ENG: Equity Curve | Текущий капитал для мини-графика", group=group_eng)
-// V270: New ENGINE channels
-eng_top1_price   = input.source(close, "VIS: Top1 Price",    tooltip="ENG: Top1 Price | Цена лучшей зоны", group=group_eng)
-eng_top1_score   = input.source(close, "VIS: Top1 Score",    tooltip="ENG: Top1 Score | Score лучшей зоны (0-150)", group=group_eng)
-eng_top1_dist    = input.source(close, "VIS: Top1 Dist",     tooltip="ENG: Top1 Dist | Расстояние до лучшей зоны (ATR)", group=group_eng)
-eng_regime       = input.source(close, "VIS: Regime",         tooltip="ENG: Regime | 0=trending_up, 1=trending_down, 2=ranging, 3=volatile", group=group_eng)
-eng_hurst        = input.source(close, "VIS: Hurst",          tooltip="ENG: Hurst | Hurst Exponent (0-1). >0.5=trending, <0.5=mean-reverting", group=group_eng)
-eng_cvd_div      = input.source(close, "VIS: CVD Div",        tooltip="ENG: CVD Div | 1=bullish div, -1=bearish div, 0=none", group=group_eng)
-// V273: New ENGINE channels — Market Microstructure & Structure Breaks
-eng_poc_price    = input.source(close, "VIS: POC Price",      tooltip="ENG: POC Price | Volume Profile Point of Control price level", group=group_eng)
-// V273-fix: combined channels — decode VCP/Squeeze/Absorption bitmask and BOS/CHoCH encoded value
-eng_micro_combo  = input.source(close, "VIS: Micro Combo",    tooltip="ENG: Micro Combo | Bitmask: bit2=VCP, bit1=Squeeze, bit0=Absorption (0-7)", group=group_eng)
-eng_struct_combo = input.source(close, "VIS: Struct Combo",   tooltip="ENG: Struct Combo | BOS×10 + CHoCH. BOS: ±10, CHoCH: ±1", group=group_eng)
-eng_version      = input.source(close, "VIS: Version",      tooltip="ENG: Version | Ожидается: 273.0. Протокол совместимости", group=group_eng)
-
-// ── Переключатель: использовать данные из ENGINE или локальные fallback ──────
-use_engine_data  = input.bool(false, "Использовать данные из ENGINE (подключите source выше)", tooltip="⚠️ ВАЖНО: Включите ТОЛЬКО ПОСЛЕ подключения всех ENGINE plot-каналов к input.source() выше. По умолчанию все source = close (плейсхолдер). Если включить без подключения — дашборд покажет цену close вместо реальных метрик. Pine Script не позволяет автоопределение подключённых source.", group=group_eng)
+group_eng = "🔗 ENGINE DATA (input.source)"
+// ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 273.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
+// ── Автоопределение ENGINE по каналу Version ──
+float EXPECTED_ENG_VERSION = 273.0
+bool  _auto_engine = math.round(eng_version) == EXPECTED_ENG_VERSION
+eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=273 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
+bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
+// ── Каналы данных (порядок соответствует ENGINE plot-каналам) ──
+eng_z_score      = input.source(close, "VIS: Z-Score",      tooltip="→ ENG: Z-Score | Диапазон: -10..+10 σ. Нормализованная аномальность тела свечи", group=group_eng)
+eng_rvol         = input.source(close, "VIS: RVOL",         tooltip="→ ENG: RVOL | Диапазон: 0..∞ (типично 0.1-5.0×). Относительный объём", group=group_eng)
+eng_htf_trend    = input.source(close, "VIS: HTF Trend",    tooltip="→ ENG: HTF Trend | Значения: -1 (bear), 0 (flat), 1 (bull)", group=group_eng)
+eng_itf_trend    = input.source(close, "VIS: ITF Trend",    tooltip="→ ENG: ITF Trend | Значения: -1 (bear), 0 (flat), 1 (bull)", group=group_eng)
+eng_major_bos    = input.source(close, "VIS: Major BOS",    tooltip="→ ENG: Major BOS | Значения: 0 (bear), 1 (bull). Break of Structure", group=group_eng)
+eng_vwap         = input.source(close, "VIS: VWAP",         tooltip="→ ENG: VWAP | Диапазон: цена актива. Volume-Weighted Average Price", group=group_eng)
+eng_dist_bull    = input.source(close, "VIS: Dist Bull",    tooltip="→ ENG: Dist Bull | Диапазон: 0..∞ тиков. Расстояние до бычьего пробоя", group=group_eng)
+eng_dist_bear    = input.source(close, "VIS: Dist Bear",    tooltip="→ ENG: Dist Bear | Диапазон: 0..∞ тиков. Расстояние до медвежьего пробоя", group=group_eng)
+eng_stoch_prob   = input.source(close, "VIS: Stoch Prob",   tooltip="→ ENG: Stoch Prob | Диапазон: 0.1-99.9%. Вероятность стохастической модели", group=group_eng)
+eng_stoch_n      = input.source(close, "VIS: Stoch N",      tooltip="→ ENG: Stoch N | Диапазон: 0-50. Количество зон в выборке", group=group_eng)
+eng_stoch_disc   = input.source(close, "VIS: Stoch Disc",   tooltip="→ ENG: Stoch Disc | Диапазон: 0-0.25. Скидка при высокой вероятности", group=group_eng)
+eng_trades       = input.source(close, "VIS: Trades",       tooltip="→ ENG: Trades | Диапазон: 0..∞. Всего закрытых сделок", group=group_eng)
+eng_wins         = input.source(close, "VIS: Wins",         tooltip="→ ENG: Wins | Диапазон: 0..∞. Количество выигрышных сделок", group=group_eng)
+eng_gross_profit = input.source(close, "VIS: Gross Profit", tooltip="→ ENG: Gross Profit | Диапазон: 0..∞. Валовая прибыль", group=group_eng)
+eng_gross_loss   = input.source(close, "VIS: Gross Loss",   tooltip="→ ENG: Gross Loss | Диапазон: 0..∞ (абс.). Валовый убыток", group=group_eng)
+eng_equity       = input.source(close, "VIS: Equity",       tooltip="→ ENG: Equity | Диапазон: >0. Текущий капитал стратегии", group=group_eng)
+eng_dd_pct       = input.source(close, "VIS: DD%",          tooltip="→ ENG: DD% | Диапазон: 0-100%. Текущая просадка", group=group_eng)
+eng_zones_sup    = input.source(close, "VIS: Zones Sup",    tooltip="→ ENG: Zones Sup | Диапазон: 0-50. Активные зоны поддержки", group=group_eng)
+eng_zones_res    = input.source(close, "VIS: Zones Res",    tooltip="→ ENG: Zones Res | Диапазон: 0-50. Активные зоны сопротивления", group=group_eng)
+eng_zones_bb     = input.source(close, "VIS: Zones BB",     tooltip="→ ENG: Zones BB | Диапазон: 0-50. Активные Breaker Blocks", group=group_eng)
+eng_zones_rz     = input.source(close, "VIS: Zones RZ",     tooltip="→ ENG: Zones RZ | Диапазон: 0-50. Активные Rejection Zones", group=group_eng)
+eng_safe_pv      = input.source(close, "VIS: Safe PV",      tooltip="→ ENG: Safe PV | Диапазон: ≥1.0. Point Value для фьючерсов", group=group_eng)
+eng_vol_ratio    = input.source(close, "VIS: Vol Ratio",    tooltip="→ ENG: Vol Ratio | Диапазон: 0.3-3.0. ATR/ATR_slow волатильность", group=group_eng)
+eng_htf_vol      = input.source(close, "VIS: HTF Vol",      tooltip="→ ENG: HTF Vol | Диапазон: 0.5-3.0. HTF волатильность контекст", group=group_eng)
+eng_max_hist     = input.source(close, "VIS: Max Hist",     tooltip="→ ENG: Max Hist | Диапазон: 500-4999. Глубина истории в барах", group=group_eng)
+eng_pivot_l_sup  = input.source(close, "VIS: Pivot L Sup",  tooltip="→ ENG: Pivot L Sup | Диапазон: 1-4999. Левое плечо пивота поддержки", group=group_eng)
+eng_pivot_r_sup  = input.source(close, "VIS: Pivot R Sup",  tooltip="→ ENG: Pivot R Sup | Диапазон: 1-4999. Правое плечо пивота поддержки", group=group_eng)
+eng_pivot_l_res  = input.source(close, "VIS: Pivot L Res",  tooltip="→ ENG: Pivot L Res | Диапазон: 1-4999. Левое плечо пивота сопротивления", group=group_eng)
+eng_pivot_r_res  = input.source(close, "VIS: Pivot R Res",  tooltip="→ ENG: Pivot R Res | Диапазон: 1-4999. Правое плечо пивота сопротивления", group=group_eng)
+eng_ob_len_sup   = input.source(close, "VIS: OB Len Sup",   tooltip="→ ENG: OB Len Sup | Диапазон: 1-20. Cluster size для поддержки", group=group_eng)
+eng_ob_len_res   = input.source(close, "VIS: OB Len Res",   tooltip="→ ENG: OB Len Res | Диапазон: 1-20. Cluster size для сопротивления", group=group_eng)
+eng_cluster_tol  = input.source(close, "VIS: Cluster Tol",  tooltip="→ ENG: Cluster Tol | Диапазон: 0.1-5.0 (×ATR). Noise tolerance", group=group_eng)
+eng_inv_dist_sup = input.source(close, "VIS: Inv Dist Sup", tooltip="→ ENG: Inv Dist Sup | Расстояние инвалидации Support (ATR)", group=group_eng)
+eng_inv_dist_res = input.source(close, "VIS: Inv Dist Res", tooltip="→ ENG: Inv Dist Res | Расстояние инвалидации Resistance (ATR)", group=group_eng)
+eng_fvg_min      = input.source(close, "VIS: FVG Min",      tooltip="→ ENG: FVG Min | Диапазон: 0.0001-5.0 (×ATR). Минимальный FVG", group=group_eng)
+eng_fvg_max      = input.source(close, "VIS: FVG Max",      tooltip="→ ENG: FVG Max | Диапазон: 0.5-20.0 (×ATR). Максимальный FVG", group=group_eng)
+eng_confluence   = input.source(close, "VIS: Confluence",   tooltip="→ ENG: Confluence | Диапазон: 1-10. Мин. факторов для входа", group=group_eng)
+eng_z_min        = input.source(close, "VIS: Z Min",        tooltip="→ ENG: Z Min | Диапазон: 0.1-5.0. Минимальный Z-Score порог", group=group_eng)
+eng_z_max        = input.source(close, "VIS: Z Max",        tooltip="→ ENG: Z Max | Диапазон: 1.0-15.0. Максимальный Z-Score порог", group=group_eng)
+eng_vol_max      = input.source(close, "VIS: Vol Max",      tooltip="→ ENG: Vol Max | Диапазон: 1.0-10.0. Максимальный RVOL порог", group=group_eng)
+eng_stoch_mu     = input.source(close, "VIS: Stoch Mu",     tooltip="→ ENG: Stoch Mu | Диапазон: >0 баров. Среднее время между зонами", group=group_eng)
+eng_stoch_sigma  = input.source(close, "VIS: Stoch Sigma",  tooltip="→ ENG: Stoch Sigma | Диапазон: ≥0. Стд.откл. времени между зонами", group=group_eng)
+eng_stoch_eta    = input.source(close, "VIS: Stoch Eta",    tooltip="→ ENG: Stoch Eta | Диапазон: ≥0 баров. Ожидаемое время до зоны", group=group_eng)
+eng_kelly_f      = input.source(close, "VIS: Kelly F",      tooltip="→ ENG: Kelly F | Диапазон: 0-1.0. Kelly Criterion оптимальная доля", group=group_eng)
+eng_sharpe       = input.source(close, "VIS: Sharpe",       tooltip="→ ENG: Sharpe | Диапазон: -∞..+∞ (годовой). Sharpe Ratio", group=group_eng)
+eng_sortino      = input.source(close, "VIS: Sortino",      tooltip="→ ENG: Sortino | Диапазон: -∞..+∞ (годовой). Sortino Ratio", group=group_eng)
+eng_mc_dd95      = input.source(close, "VIS: MC DD95",      tooltip="→ ENG: MC DD95 | Диапазон: 0-100%. Monte Carlo 95th pctile drawdown", group=group_eng)
+eng_equity_curve = input.source(close, "VIS: Equity Curve",  tooltip="→ ENG: Equity Curve | Текущий капитал для мини-графика", group=group_eng)
+eng_top1_price   = input.source(close, "VIS: Top1 Price",    tooltip="→ ENG: Top1 Price | Цена лучшей зоны", group=group_eng)
+eng_top1_score   = input.source(close, "VIS: Top1 Score",    tooltip="→ ENG: Top1 Score | Score лучшей зоны (0-150)", group=group_eng)
+eng_top1_dist    = input.source(close, "VIS: Top1 Dist",     tooltip="→ ENG: Top1 Dist | Расстояние до лучшей зоны (ATR)", group=group_eng)
+eng_regime       = input.source(close, "VIS: Regime",         tooltip="→ ENG: Regime | 0=trending_up, 1=trending_down, 2=ranging, 3=volatile", group=group_eng)
+eng_hurst        = input.source(close, "VIS: Hurst",          tooltip="→ ENG: Hurst | Hurst Exponent (0-1). >0.5=trending, <0.5=mean-reverting", group=group_eng)
+eng_cvd_div      = input.source(close, "VIS: CVD Div",        tooltip="→ ENG: CVD Div | 1=bullish div, -1=bearish div, 0=none", group=group_eng)
+eng_poc_price    = input.source(close, "VIS: POC Price",      tooltip="→ ENG: POC Price | Volume Profile Point of Control price level", group=group_eng)
+eng_micro_combo  = input.source(close, "VIS: Micro Combo",    tooltip="→ ENG: Micro Combo | Bitmask: bit2=VCP, bit1=Squeeze, bit0=Absorption (0-7)", group=group_eng)
+eng_struct_combo = input.source(close, "VIS: Struct Combo",   tooltip="→ ENG: Struct Combo | BOS×10 + CHoCH. BOS: ±10, CHoCH: ±1", group=group_eng)
 
 // ==========================================
 // БЛОК 3: ДЕКОДИРОВАНИЕ ДАННЫХ ИЗ ENGINE
@@ -277,11 +280,12 @@ float v_sharpe       = use_engine_data ? eng_sharpe       : 0.0
 float v_sortino      = use_engine_data ? eng_sortino      : 0.0
 float v_mc_dd95      = use_engine_data ? eng_mc_dd95      : 0.0
 float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
-float v_eng_version  = use_engine_data ? eng_version      : 0.0
+// v_eng_version reads eng_version unconditionally (not gated by use_engine_data)
+// to enable auto-detection: when connected to ENGINE it returns 273.0, otherwise close price
+float v_eng_version  = eng_version
 
-// V273: Version compatibility check (updated to match ENGINE v273)
-float EXPECTED_ENG_VERSION = 273.0
-bool  v_version_ok   = not use_engine_data or (v_eng_version == EXPECTED_ENG_VERSION)
+// V273: Version compatibility check (uses auto-detection constant from line 138)
+bool  v_version_ok   = not use_engine_data or (math.round(v_eng_version) == EXPECTED_ENG_VERSION)
 
 // ==========================================
 // Производные значения (защищено через f_safe_div)
@@ -335,10 +339,11 @@ f_fmt_dist(float dist, color break_col) =>
 
 if barstate.islast and show_dash
     string t_sz  = dash_size == "Tiny" ? size.tiny : (dash_size == "Small" ? size.small : size.normal)
-    // V269: ENGINE connection indicator (green dot = connected, red dot = standalone)
+    // ENGINE connection indicator with auto-detect mode info
     string eng_dot = use_engine_data ? "🟢" : "🔴"
-    string eng_status = use_engine_data ? eng_dot + " ENGINE" : eng_dot + " Standalone"
-    // V269: Version mismatch warning
+    string mode_label = eng_connect_mode == "Auto" ? (use_engine_data ? "Auto ✓" : "Auto ✗") : (use_engine_data ? "Force ON" : "Force OFF")
+    string eng_status = use_engine_data ? eng_dot + " ENGINE (" + mode_label + ")" : eng_dot + " Standalone (" + mode_label + ")"
+    // Version mismatch warning
     string ver_warn = ""
     if use_engine_data and not v_version_ok
         ver_warn := " ⚠️v" + str.tostring(v_eng_version, "#")
@@ -453,9 +458,10 @@ if barstate.islast and show_dash
         // V270: Version compatibility warning
         if use_engine_data and not v_version_ok
             f_dr(40, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
-        // V270: Standalone warning
+        // Standalone warning with connection hint
         if not use_engine_data
-            f_dr(41, "⚠️ STANDALONE", "Данные неточны без ENGINE", color.orange, color.yellow, t_sz)
+            string _standalone_hint = eng_connect_mode == "Auto" ? "Подключите VIS: Version → ENG: Version" : "Режим: Выкл (Force OFF)"
+            f_dr(41, "⚠️ STANDALONE", _standalone_hint, color.orange, color.yellow, t_sz)
 else
     table.clear(dash, 0, 0, 1, 47)
 
@@ -477,13 +483,14 @@ alertcondition(v_choch_signal < 0, title="🔄 CHoCH Bearish", message="🔄 Cha
 alertcondition(v_squeeze > 0.5, title="🔸 Keltner Squeeze", message="🔸 Keltner Squeeze активен — сжатие волатильности, ожидается импульс")
 alertcondition(v_mc_dd95 > 30, title="⚠️ Monte Carlo DD >30%", message="⚠️ Monte Carlo 95th percentile drawdown превысил 30%")
 
-// V269: Standalone warning label on chart
+// Standalone warning label on chart with auto-detect hint
 var label _standalone_warn = na
 if barstate.islast and not use_engine_data
     if not na(_standalone_warn)
         label.delete(_standalone_warn)
+    string _warn_text = eng_connect_mode == "Auto" ? "⚠️ ENGINE не обнаружен. Подключите VIS: Version → ENG: Version" : "⚠️ ENGINE отключён (Force OFF)"
     _standalone_warn := label.new(bar_index, high * 1.002,
-         "⚠️ Данные неточны без ENGINE",
+         _warn_text,
          color=color.new(color.orange, 60),
          textcolor=color.white, size=size.small,
          style=label.style_label_down)
