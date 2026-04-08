@@ -1,9 +1,9 @@
 // @version=6
 indicator("Trading Fluppy VISUAL",
      overlay=true,
-     max_labels_count=50,
-     max_boxes_count=10,
-     max_lines_count=10)
+     max_labels_count=500,
+     max_boxes_count=500,
+     max_lines_count=500)
 
 // ==========================================
 // ВИЗУАЛИЗАТОР (VISUAL) движка Trading Fluppy ENGINE
@@ -186,7 +186,14 @@ eng_top1_dist    = input.source(close, "VIS: Top1 Dist",     tooltip="ENG: Top1 
 eng_regime       = input.source(close, "VIS: Regime",         tooltip="ENG: Regime | 0=trending_up, 1=trending_down, 2=ranging, 3=volatile", group=group_eng)
 eng_hurst        = input.source(close, "VIS: Hurst",          tooltip="ENG: Hurst | Hurst Exponent (0-1). >0.5=trending, <0.5=mean-reverting", group=group_eng)
 eng_cvd_div      = input.source(close, "VIS: CVD Div",        tooltip="ENG: CVD Div | 1=bullish div, -1=bearish div, 0=none", group=group_eng)
-eng_version      = input.source(close, "VIS: Version",      tooltip="ENG: Version | Ожидается: 270.0. Протокол совместимости", group=group_eng)
+// V273: New ENGINE channels — Market Microstructure & Structure Breaks
+eng_poc_price    = input.source(close, "VIS: POC Price",      tooltip="ENG: POC Price | Volume Profile Point of Control price level", group=group_eng)
+eng_vcp          = input.source(close, "VIS: VCP",            tooltip="ENG: VCP | 1=Volume Contraction Pattern detected, 0=none", group=group_eng)
+eng_squeeze      = input.source(close, "VIS: Squeeze",        tooltip="ENG: Squeeze | 1=Keltner Squeeze active, 0=none", group=group_eng)
+eng_absorption   = input.source(close, "VIS: Absorption",     tooltip="ENG: Absorption | 1=Institutional absorption detected, 0=none", group=group_eng)
+eng_bos_signal   = input.source(close, "VIS: BOS Signal",     tooltip="ENG: BOS Signal | 1=bullish BOS, -1=bearish BOS, 0=none", group=group_eng)
+eng_choch_signal = input.source(close, "VIS: CHoCH Signal",   tooltip="ENG: CHoCH Signal | 1=bullish CHoCH, -1=bearish CHoCH, 0=none", group=group_eng)
+eng_version      = input.source(close, "VIS: Version",      tooltip="ENG: Version | Ожидается: 273.0. Протокол совместимости", group=group_eng)
 
 // ── Переключатель: использовать данные из ENGINE или локальные fallback ──────
 use_engine_data  = input.bool(false, "Использовать данные из ENGINE (подключите source выше)", tooltip="⚠️ ВАЖНО: Включите ТОЛЬКО ПОСЛЕ подключения всех ENGINE plot-каналов к input.source() выше. По умолчанию все source = close (плейсхолдер). Если включить без подключения — дашборд покажет цену close вместо реальных метрик. Pine Script не позволяет автоопределение подключённых source.", group=group_eng)
@@ -250,6 +257,14 @@ float v_regime       = use_engine_data ? eng_regime        : 0.0
 float v_hurst        = use_engine_data ? eng_hurst         : 0.5
 float v_cvd_div      = use_engine_data ? eng_cvd_div       : 0.0
 
+// V273: New channel decoders — Market Microstructure & Structure Breaks
+float v_poc_price    = use_engine_data ? eng_poc_price     : na
+float v_vcp          = use_engine_data ? eng_vcp           : 0.0
+float v_squeeze      = use_engine_data ? eng_squeeze       : 0.0
+float v_absorption   = use_engine_data ? eng_absorption    : 0.0
+float v_bos_signal   = use_engine_data ? eng_bos_signal    : 0.0
+float v_choch_signal = use_engine_data ? eng_choch_signal  : 0.0
+
 // V269: New channel decoders (stochastic, risk, version)
 float v_stoch_mu     = use_engine_data ? eng_stoch_mu     : 0.0
 float v_stoch_sigma  = use_engine_data ? eng_stoch_sigma  : 0.0
@@ -261,8 +276,8 @@ float v_mc_dd95      = use_engine_data ? eng_mc_dd95      : 0.0
 float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
 float v_eng_version  = use_engine_data ? eng_version      : 0.0
 
-// V269: Version compatibility check
-float EXPECTED_ENG_VERSION = 270.0
+// V273: Version compatibility check (updated to match ENGINE v273)
+float EXPECTED_ENG_VERSION = 273.0
 bool  v_version_ok   = not use_engine_data or (v_eng_version == EXPECTED_ENG_VERSION)
 
 // ==========================================
@@ -297,7 +312,7 @@ string v_session  = _temp_s == "" ? "Quiet" : str.trim(_temp_s)
 // ==========================================
 // БЛОК 4: DASHBOARD
 // ==========================================
-var table dash = table.new(position.top_right, 2, 42, bgcolor=color.new(color.black, 40), border_width=1)
+var table dash = table.new(position.top_right, 2, 48, bgcolor=color.new(color.black, 40), border_width=1)
 
 f_dr(int row, string lbl, string value, color lc, color vc, string sz) =>
     table.cell(dash, 0, row, lbl, text_color=lc, text_size=sz)
@@ -345,12 +360,13 @@ if barstate.islast and show_dash
         f_dr(8,  "Hist Depth", f_ts(v_max_hist) + " (" + hist_mode + ")", color.gray, color.white, t_sz)
 
         f_dr(9,  "Active Zones", "Sup:" + f_ts(v_cnt_sup) + " Res:" + f_ts(v_cnt_res) + " BB:" + f_ts(v_cnt_bb) + " RZ:" + f_ts(v_cnt_rz), color.gray, color.white, t_sz)
-        f_dr(10, "Total Trades", f_ts(v_total_tr), color.gray, color.white, t_sz)
-        f_dr(11, "Win Rate", str.tostring(v_win_rate,"#.#") + "%", color.gray, v_win_rate > 50 ? color.lime : color.orange, t_sz)
-        f_dr(12, "Profit Factor", na(v_pf) ? "N/A" : str.tostring(v_pf,"#.##"), color.gray, (not na(v_pf) and v_pf > 1.5) ? color.lime : color.white, t_sz)
+        // V273-fix: show "N/A" instead of "0" for strategy-specific metrics in standalone mode
+        f_dr(10, "Total Trades", use_engine_data ? f_ts(v_total_tr) : "N/A", color.gray, use_engine_data ? color.white : color.gray, t_sz)
+        f_dr(11, "Win Rate", use_engine_data ? str.tostring(v_win_rate,"#.#") + "%" : "N/A", color.gray, use_engine_data ? (v_win_rate > 50 ? color.lime : color.orange) : color.gray, t_sz)
+        f_dr(12, "Profit Factor", not use_engine_data ? "N/A" : (na(v_pf) ? "N/A" : str.tostring(v_pf,"#.##")), color.gray, (use_engine_data and not na(v_pf) and v_pf > 1.5) ? color.lime : color.white, t_sz)
 
-        f_dr(13, "Cur DD", str.tostring(v_dd_pct,"#.#") + "%", color.white, v_dd_pct > 10 ? color.orange : color.lime, t_sz)
-        f_dr(14, "Equity", f_mt(v_equity), color.gray, color.white, t_sz)
+        f_dr(13, "Cur DD", use_engine_data ? str.tostring(v_dd_pct,"#.#") + "%" : "N/A", color.white, use_engine_data ? (v_dd_pct > 10 ? color.orange : color.lime) : color.gray, t_sz)
+        f_dr(14, "Equity", use_engine_data ? f_mt(v_equity) : "N/A", color.gray, use_engine_data ? color.white : color.gray, t_sz)
         f_dr(15, "Active Session", v_session, color.gray, color.white, t_sz)
 
         [txt_bull_dist, col_bull_dist] = f_fmt_dist(v_dist_bull, color.lime)
@@ -411,14 +427,34 @@ if barstate.islast and show_dash
             top_z_col := v_top1_score >= 100 ? color.lime : v_top1_score >= 80 ? #00E5FF : color.white
         f_dr(35, "Top Zone", top_z_txt, color.aqua, top_z_col, t_sz)
 
+        // V273: Point of Control (Volume Profile)
+        string poc_txt = not na(v_poc_price) and v_poc_price > 0 ? f_mt(v_poc_price) : "N/A"
+        color  poc_col = not na(v_poc_price) and v_poc_price > 0 ? (math.abs(close - v_poc_price) < nz(atr_val, 1.0) ? color.lime : color.white) : color.gray
+        f_dr(36, "Point of Control", poc_txt, color.gray, poc_col, t_sz)
+
+        // V273: Market Microstructure (VCP, Squeeze, Absorption)
+        string vcp_txt     = v_vcp > 0.5 ? "🟢" : "⚪"
+        string sqz_txt     = v_squeeze > 0.5 ? "🟡" : "⚪"
+        string abs_txt     = v_absorption > 0.5 ? "🔵" : "⚪"
+        string micro_txt   = "VCP:" + vcp_txt + " Sqz:" + sqz_txt + " Abs:" + abs_txt
+        color  micro_col   = (v_vcp > 0.5 or v_squeeze > 0.5 or v_absorption > 0.5) ? color.lime : color.white
+        f_dr(37, "Microstructure", micro_txt, color.gray, micro_col, t_sz)
+
+        // V273: Structure Breaks (BOS/CHoCH)
+        string bos_txt   = v_bos_signal > 0.5 ? "🟢 Bull" : v_bos_signal < -0.5 ? "🔴 Bear" : "⚪ None"
+        string choch_txt = v_choch_signal > 0.5 ? "🟢 Bull" : v_choch_signal < -0.5 ? "🔴 Bear" : "⚪ None"
+        string struct_txt = "BOS:" + bos_txt + " CHoCH:" + choch_txt
+        color  struct_col = (v_bos_signal != 0 or v_choch_signal != 0) ? (v_bos_signal > 0 or v_choch_signal > 0 ? color.lime : color.red) : color.white
+        f_dr(38, "Structure Breaks", struct_txt, color.gray, struct_col, t_sz)
+
         // V270: Version compatibility warning
         if use_engine_data and not v_version_ok
-            f_dr(37, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
+            f_dr(40, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
         // V270: Standalone warning
         if not use_engine_data
-            f_dr(38, "⚠️ STANDALONE", "Данные неточны без ENGINE", color.orange, color.yellow, t_sz)
+            f_dr(41, "⚠️ STANDALONE", "Данные неточны без ENGINE", color.orange, color.yellow, t_sz)
 else
-    table.clear(dash, 0, 0, 1, 41)
+    table.clear(dash, 0, 0, 1, 47)
 
 // V270: Equity curve + drawdown mini-graph in separate pane
 plot(v_equity_curve, "Equity Curve", color=color.new(color.lime, 30), linewidth=2, display=display.pane)
@@ -430,6 +466,11 @@ plot(-v_drawdown, "Drawdown %", color=color.new(color.red, 50), linewidth=1, dis
 // V270: Alert conditions
 alertcondition(not na(v_top1_dist) and v_top1_dist >= 0 and v_top1_dist < 1.0 and v_top1_score >= 100, title="🔔 Price near BEST zone", message="🔔 Цена подходит к BEST зоне (< 1 ATR)")
 alertcondition(v_cvd_div != 0, title="⚡ CVD Divergence detected", message="⚡ CVD дивергенция обнаружена — потенциальный разворот")
+// V273: New alert conditions for BOS/CHoCH and Squeeze
+alertcondition(v_bos_signal != 0, title="📊 BOS Signal", message="📊 Break of Structure: " + (v_bos_signal > 0 ? "Bullish" : "Bearish"))
+alertcondition(v_choch_signal != 0, title="🔄 CHoCH Signal", message="🔄 Change of Character: " + (v_choch_signal > 0 ? "Bullish" : "Bearish"))
+alertcondition(v_squeeze > 0.5, title="🔸 Keltner Squeeze", message="🔸 Keltner Squeeze активен — сжатие волатильности, ожидается импульс")
+alertcondition(v_mc_dd95 > 30, title="⚠️ Monte Carlo DD >30%", message="⚠️ Monte Carlo 95th percentile drawdown превысил 30%")
 
 // V269: Standalone warning label on chart
 var label _standalone_warn = na
