@@ -145,9 +145,9 @@ hint_min_score   = input.int(40, "Мин. Score зоны", minval=10, maxval=150
 // Если ENGINE не подключён — используются локальные fallback-значения.
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 277.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 278.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
 // ── Автоопределение ENGINE по каналу Version ──
-float EXPECTED_ENG_VERSION = 277.0
+float EXPECTED_ENG_VERSION = 278.0
 bool  _auto_engine = math.round(eng_version) == EXPECTED_ENG_VERSION
 eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=275 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
 bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
@@ -169,10 +169,10 @@ eng_gross_profit = input.source(close, "VIS: Gross Profit", tooltip="→ ENG: Gr
 eng_gross_loss   = input.source(close, "VIS: Gross Loss",   tooltip="→ ENG: Gross Loss | Диапазон: 0..∞ (абс.). Валовый убыток", group=group_eng)
 eng_equity       = input.source(close, "VIS: Equity",       tooltip="→ ENG: Equity | Диапазон: >0. Текущий капитал стратегии", group=group_eng)
 eng_dd_pct       = input.source(close, "VIS: DD%",          tooltip="→ ENG: DD% | Диапазон: 0-100%. Текущая просадка", group=group_eng)
-eng_zones_sup    = input.source(close, "VIS: Zones Sup",    tooltip="→ ENG: Zones Sup | Диапазон: 0-50. Активные зоны поддержки", group=group_eng)
-eng_zones_res    = input.source(close, "VIS: Zones Res",    tooltip="→ ENG: Zones Res | Диапазон: 0-50. Активные зоны сопротивления", group=group_eng)
-eng_zones_bb     = input.source(close, "VIS: Zones BB",     tooltip="→ ENG: Zones BB | Диапазон: 0-50. Активные Breaker Blocks", group=group_eng)
-eng_zones_rz     = input.source(close, "VIS: Zones RZ",     tooltip="→ ENG: Zones RZ | Диапазон: 0-50. Активные Rejection Zones", group=group_eng)
+eng_zones_sup    = input.source(close, "VIS: Zones Sup",    tooltip="→ ENG: Zones Sup | Диапазон: 0-500. Все активные зоны поддержки (до GC)", group=group_eng)
+eng_zones_res    = input.source(close, "VIS: Zones Res",    tooltip="→ ENG: Zones Res | Диапазон: 0-500. Все активные зоны сопротивления (до GC)", group=group_eng)
+eng_zones_bb     = input.source(close, "VIS: Zones BB",     tooltip="→ ENG: Zones BB | Диапазон: 0-500. Все активные Breaker Blocks (до GC)", group=group_eng)
+eng_zones_rz     = input.source(close, "VIS: Zones RZ",     tooltip="→ ENG: Zones RZ | Диапазон: 0-500. Все активные Rejection Zones (до GC)", group=group_eng)
 eng_safe_pv      = input.source(close, "VIS: Safe PV",      tooltip="→ ENG: Safe PV | Диапазон: ≥1.0. Point Value для фьючерсов", group=group_eng)
 eng_vol_ratio    = input.source(close, "VIS: Vol Ratio",    tooltip="→ ENG: Vol Ratio | Диапазон: 0.3-3.0. ATR/ATR_slow волатильность", group=group_eng)
 eng_htf_vol      = input.source(close, "VIS: HTF Vol",      tooltip="→ ENG: HTF Vol | Диапазон: 0.5-3.0. HTF волатильность контекст", group=group_eng)
@@ -243,10 +243,16 @@ float v_gross_profit = use_engine_data ? eng_gross_profit : src_gross_profit
 float v_gross_loss   = use_engine_data ? eng_gross_loss   : src_gross_loss
 float v_equity       = use_engine_data ? eng_equity       : src_equity
 float v_dd_pct       = use_engine_data ? eng_dd_pct       : src_dd_pct
-int   v_cnt_sup      = math.round(use_engine_data ? eng_zones_sup    : src_zones_sup)
-int   v_cnt_res      = math.round(use_engine_data ? eng_zones_res    : src_zones_res)
-int   v_cnt_bb       = math.round(use_engine_data ? eng_zones_bb     : src_zones_bb)
-int   v_cnt_rz       = math.round(use_engine_data ? eng_zones_rz     : src_zones_rz)
+// V278: Sanity check — zone counts above 500 are impossible (likely close price from unconnected channel)
+int   _raw_cnt_sup   = math.round(use_engine_data ? eng_zones_sup    : src_zones_sup)
+int   _raw_cnt_res   = math.round(use_engine_data ? eng_zones_res    : src_zones_res)
+int   _raw_cnt_bb    = math.round(use_engine_data ? eng_zones_bb     : src_zones_bb)
+int   _raw_cnt_rz    = math.round(use_engine_data ? eng_zones_rz     : src_zones_rz)
+int   v_cnt_sup      = _raw_cnt_sup >= 0 and _raw_cnt_sup <= 500 ? _raw_cnt_sup : 0
+int   v_cnt_res      = _raw_cnt_res >= 0 and _raw_cnt_res <= 500 ? _raw_cnt_res : 0
+int   v_cnt_bb       = _raw_cnt_bb  >= 0 and _raw_cnt_bb  <= 500 ? _raw_cnt_bb  : 0
+int   v_cnt_rz       = _raw_cnt_rz  >= 0 and _raw_cnt_rz  <= 500 ? _raw_cnt_rz  : 0
+bool  _zones_channel_ok = _raw_cnt_sup <= 500 and _raw_cnt_res <= 500 and _raw_cnt_bb <= 500 and _raw_cnt_rz <= 500
 float v_safe_pv      = use_engine_data ? eng_safe_pv      : src_safe_pv
 float v_vol_ratio    = use_engine_data ? eng_vol_ratio    : src_vol_ratio
 float v_htf_vol      = use_engine_data ? eng_htf_vol      : src_htf_vol
@@ -505,7 +511,10 @@ if barstate.islast and show_dash
         f_dr(7,  "RVOL", str.tostring(v_rvol,"#.##") + "×", color.gray, v_rvol > v_vol_max ? #FFD700 : (v_rvol > 1.0 ? color.lime : color.red), t_sz)
         f_dr(8,  "Hist Depth", f_ts(v_max_hist) + " (" + hist_mode + ")", color.gray, color.white, t_sz)
 
-        f_dr(9,  "Active Zones", "Sup:" + f_ts(v_cnt_sup) + " Res:" + f_ts(v_cnt_res) + " BB:" + f_ts(v_cnt_bb) + " RZ:" + f_ts(v_cnt_rz), color.gray, color.white, t_sz)
+        // V278: Show warning if zone channels appear unconnected (values = close price)
+        string _zones_txt = _zones_channel_ok ? ("Sup:" + f_ts(v_cnt_sup) + " Res:" + f_ts(v_cnt_res) + " BB:" + f_ts(v_cnt_bb) + " RZ:" + f_ts(v_cnt_rz)) : "⚠️ Channels not connected"
+        color  _zones_col = _zones_channel_ok ? color.white : color.orange
+        f_dr(9,  "Active Zones", _zones_txt, color.gray, _zones_col, t_sz)
         // V273-fix: show "N/A" instead of "0" for strategy-specific metrics in standalone mode
         f_dr(10, "Total Trades", use_engine_data ? f_ts(v_total_tr) : "N/A", color.gray, use_engine_data ? color.white : color.gray, t_sz)
         f_dr(11, "Win Rate", use_engine_data ? str.tostring(v_win_rate,"#.#") + "%" : "N/A", color.gray, use_engine_data ? (v_win_rate > 50 ? color.lime : color.orange) : color.gray, t_sz)
