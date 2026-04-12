@@ -243,16 +243,17 @@ float v_gross_profit = use_engine_data ? eng_gross_profit : src_gross_profit
 float v_gross_loss   = use_engine_data ? eng_gross_loss   : src_gross_loss
 float v_equity       = use_engine_data ? eng_equity       : src_equity
 float v_dd_pct       = use_engine_data ? eng_dd_pct       : src_dd_pct
-// V278: Sanity check — zone counts above 500 are impossible (likely close price from unconnected channel)
+// V278: Sanity check — zone counts above max are impossible (likely close price from unconnected channel)
+int   _MAX_ZONE_COUNT = 500  // TradingView max_boxes_count limit; any count above this is invalid
 int   _raw_cnt_sup   = math.round(use_engine_data ? eng_zones_sup    : src_zones_sup)
 int   _raw_cnt_res   = math.round(use_engine_data ? eng_zones_res    : src_zones_res)
 int   _raw_cnt_bb    = math.round(use_engine_data ? eng_zones_bb     : src_zones_bb)
 int   _raw_cnt_rz    = math.round(use_engine_data ? eng_zones_rz     : src_zones_rz)
-int   v_cnt_sup      = _raw_cnt_sup >= 0 and _raw_cnt_sup <= 500 ? _raw_cnt_sup : 0
-int   v_cnt_res      = _raw_cnt_res >= 0 and _raw_cnt_res <= 500 ? _raw_cnt_res : 0
-int   v_cnt_bb       = _raw_cnt_bb  >= 0 and _raw_cnt_bb  <= 500 ? _raw_cnt_bb  : 0
-int   v_cnt_rz       = _raw_cnt_rz  >= 0 and _raw_cnt_rz  <= 500 ? _raw_cnt_rz  : 0
-bool  _zones_channel_ok = _raw_cnt_sup <= 500 and _raw_cnt_res <= 500 and _raw_cnt_bb <= 500 and _raw_cnt_rz <= 500
+int   v_cnt_sup      = _raw_cnt_sup >= 0 and _raw_cnt_sup <= _MAX_ZONE_COUNT ? _raw_cnt_sup : 0
+int   v_cnt_res      = _raw_cnt_res >= 0 and _raw_cnt_res <= _MAX_ZONE_COUNT ? _raw_cnt_res : 0
+int   v_cnt_bb       = _raw_cnt_bb  >= 0 and _raw_cnt_bb  <= _MAX_ZONE_COUNT ? _raw_cnt_bb  : 0
+int   v_cnt_rz       = _raw_cnt_rz  >= 0 and _raw_cnt_rz  <= _MAX_ZONE_COUNT ? _raw_cnt_rz  : 0
+bool  _zones_channel_ok = _raw_cnt_sup <= _MAX_ZONE_COUNT and _raw_cnt_res <= _MAX_ZONE_COUNT and _raw_cnt_bb <= _MAX_ZONE_COUNT and _raw_cnt_rz <= _MAX_ZONE_COUNT
 float v_safe_pv      = use_engine_data ? eng_safe_pv      : src_safe_pv
 float v_vol_ratio    = use_engine_data ? eng_vol_ratio    : src_vol_ratio
 float v_htf_vol      = use_engine_data ? eng_htf_vol      : src_htf_vol

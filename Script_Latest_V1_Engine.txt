@@ -4313,7 +4313,7 @@ f_limit_visible_zones() =>
             // V278: Dynamic SAFE_MAX — accounts for actual drawing element usage per zone
             // TradingView hard limits: max_boxes_count=500, max_lines_count=500, max_labels_count=500
             // Each zone uses: 1 box (body) + optional FVG box + grid lines/labels + visual effects
-            int _reserved   = 10  // Reserve slots for PD bands, misc drawings
+            int _reserved   = 10  // Reserve slots for Previous Day (PD) band lines/boxes (3 lines + 2 boxes) + misc
             int _avail      = 500 - _reserved
             int _boxes_pz   = show_fvg ? 2 : 1
             int _lines_pz   = (use_fib_grid ? 8 : 0) + (use_glow_best ? 2 : 0) + (use_health_bar ? 1 : 0) + (use_fvg_connector ? 1 : 0)
@@ -4321,7 +4321,7 @@ f_limit_visible_zones() =>
             int _lim_box    = _boxes_pz  > 0 ? math.floor(_avail / _boxes_pz)  : _avail
             int _lim_line   = _lines_pz  > 0 ? math.floor(_avail / _lines_pz)  : _avail
             int _lim_label  = _labels_pz > 0 ? math.floor(_avail / _labels_pz) : _avail
-            int SAFE_MAX    = math.max(math.min(_lim_box, _lim_line, _lim_label), 3)  // at least 3 zones
+            int SAFE_MAX    = math.max(math.min(_lim_box, _lim_line, _lim_label), 3)  // min 3: ensures at least 1 bull + 1 bear + 1 BB zone
             int final_limit = math.min(max_visible_zones, SAFE_MAX)
 
             if final_limit == 1
@@ -5448,8 +5448,9 @@ if not na(pd_low)
 // БЛОК 9: ENGINE EXPORTS (для Visual-индикатора)
 // ==========================================
 // V278: Use pre-GC zone counts + count newly created zones after GC for accuracy
-// _pre_gc_cnt_* captures zones before garbage collection, zone_db now has post-GC + new zones
-// We take the max of pre-GC count and direct count to show the most complete picture
+// _pre_gc_cnt_* captures zones before garbage collection (inside f_limit_visible_zones)
+// zone_db here has post-GC surviving zones + new zones added by f_create_new_zones()
+// We take max() to cover both: zones deleted by GC and zones added since GC ran
 int _post_cnt_sup = 0
 int _post_cnt_res = 0
 int _post_cnt_bb  = 0
