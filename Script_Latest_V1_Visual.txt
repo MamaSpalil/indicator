@@ -154,7 +154,7 @@ show_pd_v     = input.bool(true, "Показывать PD-зоны", group=group
 
 // V282: Support/Resistance zone visualization
 group_zones_v = "🟢🔴 Зоны поддержки / сопротивления"
-show_zones_v  = input.bool(true, "Показывать зоны (S/R)", tooltip="Отображает ближайшие зоны поддержки (зелёные) и сопротивления (красные) из ENGINE. Показывает до 2 ближайших зон каждого типа.", group=group_zones_v)
+show_zones_v  = input.bool(true, "Показывать зоны (S/R)", tooltip="Отображает ближайшие зоны поддержки (зелёные) и сопротивления (красные) из ENGINE. Включает все типы зон (OB, IMB, VCP, ACC, MBR, RZ). Показывает до 2 ближайших зон каждого направления.", group=group_zones_v)
 zone_sup_col  = input.color(color.new(#00C853, 70), "Цвет: зоны поддержки", group=group_zones_v)
 zone_res_col  = input.color(color.new(#FF1744, 70), "Цвет: зоны сопротивления", group=group_zones_v)
 

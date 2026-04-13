@@ -5419,6 +5419,8 @@ if array.size(zone_db) > 0
 
 // V282: Nearest zone boundary export for VISUAL rendering
 // Exports top/bottom of the 2 nearest support zones and 2 nearest resistance zones.
+// Includes ALL active zone types (OB, IMB, VCP, ACC, DST, MBR) — not just OB.
+// BB zones are excluded (they have their own Breaker Block visual style).
 // "Nearest" = smallest absolute distance from close to zone midpoint.
 float _exp_sup1_top = 0.0
 float _exp_sup1_bot = 0.0
@@ -5437,8 +5439,8 @@ if array.size(zone_db) > 0
     for z in zone_db
         if not z.active
             continue
-        // Skip non-OB zone types (BB, RZ, IMB etc. have their own visual styles in ENGINE)
-        if z.z_type != "OB"
+        // Skip BB zones (Breaker Blocks have their own visual style)
+        if z.z_type == "BB"
             continue
         float _zmid = (z.top + z.bot) / 2.0
         float _zdist = math.abs(close - _zmid)
