@@ -490,7 +490,7 @@ string v_session  = _temp_s == "" ? "Quiet" : str.trim(_temp_s)
 // ==========================================
 // БЛОК 4: DASHBOARD
 // ==========================================
-var table dash = table.new(position.top_right, 2, 44, bgcolor=color.new(color.black, 40), border_width=1)
+var table dash = table.new(position.top_right, 2, 40, bgcolor=color.new(color.black, 40), border_width=1)
 
 f_dr(int row, string lbl, string value, color lc, color vc, string sz) =>
     table.cell(dash, 0, row, lbl, text_color=lc, text_size=sz)
@@ -644,7 +644,7 @@ if barstate.islast and show_dash
             string _standalone_hint = eng_connect_mode == "Auto" ? "Подключите VIS: Version → ENG: Version" : "Режим: Выкл (Force OFF)"
             f_dr(37, "⚠️ STANDALONE", _standalone_hint, color.orange, color.yellow, t_sz)
 else
-    table.clear(dash, 0, 0, 1, 43)
+    table.clear(dash, 0, 0, 1, 39)
 
 // V270: Equity curve + drawdown mini-graph in separate pane
 plot(v_equity_curve, "Equity Curve", color=color.new(color.lime, 30), linewidth=2, display=display.pane)
