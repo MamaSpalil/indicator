@@ -152,6 +152,12 @@ c_ovrl_v      = input.color(color.new(color.red, 85), "Overlap Color", group=gro
 group_pd_v    = "📊 Premium / Discount"
 show_pd_v     = input.bool(true, "Показывать PD-зоны", group=group_pd_v)
 
+// V282: Support/Resistance zone visualization
+group_zones_v = "🟢🔴 Зоны поддержки / сопротивления"
+show_zones_v  = input.bool(true, "Показывать зоны (S/R)", tooltip="Отображает ближайшие зоны поддержки (зелёные) и сопротивления (красные) из ENGINE. Показывает до 2 ближайших зон каждого типа.", group=group_zones_v)
+zone_sup_col  = input.color(color.new(#00C853, 70), "Цвет: зоны поддержки", group=group_zones_v)
+zone_res_col  = input.color(color.new(#FF1744, 70), "Цвет: зоны сопротивления", group=group_zones_v)
+
 // ── ENGINE Data Sources─────────────────────────────────────────────────────
 // Подключите ENGINE plot-каналы через input.source() в настройках индикатора.
 // При подключённом ENGINE — данные используются автоматически (определяется по каналу Version).
@@ -162,9 +168,9 @@ show_pd_v     = input.bool(true, "Показывать PD-зоны", group=group
 // Если ENGINE не подключён — используются локальные fallback-значения.
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 280.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 282.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
 // ── Автоопределение ENGINE по каналу Version ──
-float EXPECTED_ENG_VERSION = 280.0
+float EXPECTED_ENG_VERSION = 282.0
 bool  _auto_engine = math.round(eng_version) == EXPECTED_ENG_VERSION
 eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=275 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
 bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
@@ -224,6 +230,15 @@ eng_sim_sl       = input.source(close, "VIS: Sim SL",         tooltip="→ ENG: 
 eng_sim_tp1      = input.source(close, "VIS: Sim TP1",        tooltip="→ ENG: Sim TP1 | Цена первого тейк-профита", group=group_eng)
 eng_sim_tp2      = input.source(close, "VIS: Sim TP2",        tooltip="→ ENG: Sim TP2 | Цена второго тейк-профита", group=group_eng)
 eng_sim_dir      = input.source(close, "VIS: Sim Dir",        tooltip="→ ENG: Sim Dir | Направление: 1=LONG, -1=SHORT, 0=нет позиции", group=group_eng)
+// V282: Zone boundary channels for VISUAL zone rendering
+eng_sup1_top     = input.source(close, "VIS: Sup1 Top",       tooltip="→ ENG: Sup1 Top | Верхняя граница ближайшей зоны поддержки (0 = нет)", group=group_eng)
+eng_sup1_bot     = input.source(close, "VIS: Sup1 Bot",       tooltip="→ ENG: Sup1 Bot | Нижняя граница ближайшей зоны поддержки (0 = нет)", group=group_eng)
+eng_sup2_top     = input.source(close, "VIS: Sup2 Top",       tooltip="→ ENG: Sup2 Top | Верхняя граница 2-й зоны поддержки (0 = нет)", group=group_eng)
+eng_sup2_bot     = input.source(close, "VIS: Sup2 Bot",       tooltip="→ ENG: Sup2 Bot | Нижняя граница 2-й зоны поддержки (0 = нет)", group=group_eng)
+eng_res1_top     = input.source(close, "VIS: Res1 Top",       tooltip="→ ENG: Res1 Top | Верхняя граница ближайшей зоны сопротивления (0 = нет)", group=group_eng)
+eng_res1_bot     = input.source(close, "VIS: Res1 Bot",       tooltip="→ ENG: Res1 Bot | Нижняя граница ближайшей зоны сопротивления (0 = нет)", group=group_eng)
+eng_res2_top     = input.source(close, "VIS: Res2 Top",       tooltip="→ ENG: Res2 Top | Верхняя граница 2-й зоны сопротивления (0 = нет)", group=group_eng)
+eng_res2_bot     = input.source(close, "VIS: Res2 Bot",       tooltip="→ ENG: Res2 Bot | Нижняя граница 2-й зоны сопротивления (0 = нет)", group=group_eng)
 
 // ==========================================
 // БЛОК 3: ДЕКОДИРОВАНИЕ ДАННЫХ ИЗ ENGINE
@@ -327,6 +342,16 @@ float v_sim_dir      = use_engine_data ? eng_sim_dir       : 0.0
 bool  v_sim_in_long  = v_sim_dir > 0.5
 bool  v_sim_in_short = v_sim_dir < -0.5
 bool  v_sim_in_trade = v_sim_in_long or v_sim_in_short
+
+// V282: Zone boundary data from ENGINE (nearest support/resistance zones)
+float v_sup1_top     = use_engine_data ? eng_sup1_top      : 0.0
+float v_sup1_bot     = use_engine_data ? eng_sup1_bot      : 0.0
+float v_sup2_top     = use_engine_data ? eng_sup2_top      : 0.0
+float v_sup2_bot     = use_engine_data ? eng_sup2_bot      : 0.0
+float v_res1_top     = use_engine_data ? eng_res1_top      : 0.0
+float v_res1_bot     = use_engine_data ? eng_res1_bot      : 0.0
+float v_res2_top     = use_engine_data ? eng_res2_top      : 0.0
+float v_res2_bot     = use_engine_data ? eng_res2_bot      : 0.0
 
 // V273: Version compatibility check (uses auto-detection constant from line 138)
 bool  v_version_ok   = not use_engine_data or (math.round(v_eng_version) == EXPECTED_ENG_VERSION)
@@ -799,6 +824,50 @@ if show_pd_v
         line.set_x2(_vis_pd_ln_m, bar_index)
         box.set_right(_vis_pd_bx_u, bar_index)
         box.set_right(_vis_pd_bx_l, bar_index)
+
+// ── V282: Support / Resistance Zone Visualization ─────────────────────────
+// Draws up to 4 zone boxes (2 nearest support + 2 nearest resistance) from ENGINE data.
+// Each zone is a semi-transparent box. Support = green, Resistance = red.
+// Boxes are re-drawn each bar to track ENGINE's live zone_db positions.
+var box _vis_z_sup1 = na
+var box _vis_z_sup2 = na
+var box _vis_z_res1 = na
+var box _vis_z_res2 = na
+if show_zones_v and use_engine_data
+    // Delete previous frame's boxes (zones are re-drawn each bar with fresh ENGINE data)
+    if not na(_vis_z_sup1)
+        box.delete(_vis_z_sup1)
+    if not na(_vis_z_sup2)
+        box.delete(_vis_z_sup2)
+    if not na(_vis_z_res1)
+        box.delete(_vis_z_res1)
+    if not na(_vis_z_res2)
+        box.delete(_vis_z_res2)
+    _vis_z_sup1 := na
+    _vis_z_sup2 := na
+    _vis_z_res1 := na
+    _vis_z_res2 := na
+    int _zbox_left = bar_index - 50  // zone box extends 50 bars back for visual presence
+    // Draw support zones (green)
+    if v_sup1_top > 0 and v_sup1_bot > 0 and v_sup1_top > v_sup1_bot
+        _vis_z_sup1 := box.new(_zbox_left, v_sup1_top, bar_index + 5, v_sup1_bot,
+             border_color=color.new(color.rgb(color.r(zone_sup_col), color.g(zone_sup_col), color.b(zone_sup_col)), 20),
+             bgcolor=zone_sup_col, border_width=2, xloc=xloc.bar_index)
+    if v_sup2_top > 0 and v_sup2_bot > 0 and v_sup2_top > v_sup2_bot
+        _vis_z_sup2 := box.new(_zbox_left, v_sup2_top, bar_index + 5, v_sup2_bot,
+             border_color=color.new(color.rgb(color.r(zone_sup_col), color.g(zone_sup_col), color.b(zone_sup_col)), 30),
+             bgcolor=color.new(color.rgb(color.r(zone_sup_col), color.g(zone_sup_col), color.b(zone_sup_col)), 80),
+             border_width=1, xloc=xloc.bar_index)
+    // Draw resistance zones (red)
+    if v_res1_top > 0 and v_res1_bot > 0 and v_res1_top > v_res1_bot
+        _vis_z_res1 := box.new(_zbox_left, v_res1_top, bar_index + 5, v_res1_bot,
+             border_color=color.new(color.rgb(color.r(zone_res_col), color.g(zone_res_col), color.b(zone_res_col)), 20),
+             bgcolor=zone_res_col, border_width=2, xloc=xloc.bar_index)
+    if v_res2_top > 0 and v_res2_bot > 0 and v_res2_top > v_res2_bot
+        _vis_z_res2 := box.new(_zbox_left, v_res2_top, bar_index + 5, v_res2_bot,
+             border_color=color.new(color.rgb(color.r(zone_res_col), color.g(zone_res_col), color.b(zone_res_col)), 30),
+             bgcolor=color.new(color.rgb(color.r(zone_res_col), color.g(zone_res_col), color.b(zone_res_col)), 80),
+             border_width=1, xloc=xloc.bar_index)
 
 // V274: Alert conditions for trade hints
 alertcondition(hint_entry_long, title="💡 Hint: ВХОД LONG", message="💡 Подсказка: ВХОД LONG — цена у зоны поддержки, тренд бычий")

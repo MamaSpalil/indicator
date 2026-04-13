@@ -4021,7 +4021,7 @@ f_limit_visible_zones() =>
             int _reserved   = 10  // Reserve slots for Previous Day (PD) band lines/boxes (3 lines + 2 boxes) + misc
             int _avail      = 500 - _reserved
             int _boxes_pz   = show_fvg ? 2 : 1
-            int _lines_pz   = (use_fib_grid ? 8 : 0) + (use_glow_best ? 2 : 0) + (use_health_bar ? 1 : 0) + (use_fvg_connector ? 1 : 0)
+            int _lines_pz   = (use_fib_grid ? 8 : 0) + (use_glow_best ? 2 : 0) + (use_health_bar ? 1 : 0) + (use_fvg_connector ? 1 : 0) + 1  // V282: +1 for side_stripe (V281)
             int _labels_pz  = (use_fib_grid ? 7 : 0) + (show_sniper ? 1 : 0) + (use_bb_arrow ? 1 : 0)
             int _lim_box    = _boxes_pz  > 0 ? math.floor(_avail / _boxes_pz)  : _avail
             int _lim_line   = _lines_pz  > 0 ? math.floor(_avail / _lines_pz)  : _avail
@@ -5417,6 +5417,55 @@ if array.size(zone_db) > 0
             _top1_zone_price := (z.top + z.bot) / 2.0
             _top1_zone_dist := z.is_bull ? f_safe_div(close - z.top, atr_val) : f_safe_div(z.bot - close, atr_val)
 
+// V282: Nearest zone boundary export for VISUAL rendering
+// Exports top/bottom of the 2 nearest support zones and 2 nearest resistance zones.
+// "Nearest" = smallest absolute distance from close to zone midpoint.
+float _exp_sup1_top = 0.0
+float _exp_sup1_bot = 0.0
+float _exp_sup2_top = 0.0
+float _exp_sup2_bot = 0.0
+float _exp_res1_top = 0.0
+float _exp_res1_bot = 0.0
+float _exp_res2_top = 0.0
+float _exp_res2_bot = 0.0
+if array.size(zone_db) > 0
+    float _best_sup1_dist = 1e18
+    float _best_sup2_dist = 1e18
+    float _best_res1_dist = 1e18
+    float _best_res2_dist = 1e18
+    for z in zone_db
+        if not z.active
+            continue
+        // Skip non-OB zone types (BB, RZ, IMB etc. have their own visual styles in ENGINE)
+        if z.z_type != "OB"
+            continue
+        float _zmid = (z.top + z.bot) / 2.0
+        float _zdist = math.abs(close - _zmid)
+        if z.is_bull  // Support zone
+            if _zdist < _best_sup1_dist
+                _best_sup2_dist := _best_sup1_dist
+                _exp_sup2_top   := _exp_sup1_top
+                _exp_sup2_bot   := _exp_sup1_bot
+                _best_sup1_dist := _zdist
+                _exp_sup1_top   := z.top
+                _exp_sup1_bot   := z.bot
+            else if _zdist < _best_sup2_dist
+                _best_sup2_dist := _zdist
+                _exp_sup2_top   := z.top
+                _exp_sup2_bot   := z.bot
+        else  // Resistance zone
+            if _zdist < _best_res1_dist
+                _best_res2_dist := _best_res1_dist
+                _exp_res2_top   := _exp_res1_top
+                _exp_res2_bot   := _exp_res1_bot
+                _best_res1_dist := _zdist
+                _exp_res1_top   := z.top
+                _exp_res1_bot   := z.bot
+            else if _zdist < _best_res2_dist
+                _best_res2_dist := _zdist
+                _exp_res2_top   := z.top
+                _exp_res2_bot   := z.bot
+
 // Equity curve for VISUAL plot
 float _equity_curve = sim_equity  // V275: use simulated equity
 
@@ -5431,8 +5480,8 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // ⚠️ ЛИМИТ TradingView: indicator() допускает МАКСИМУМ 64 output-слота.
 //    В output-слоты считаются: plot(), plotshape(), plotchar(), plotarrow(),
 //    plotbar(), plotcandle(), bgcolor(), barcolor(), fill().
-//    Текущее использование: 55 / 64 (ENG: каналы + VWAP visible plot).
-//    V280: 9 auto-tuner каналов (Pivot L/R, OB Len, Cluster Tol, Inv Dist) перенесены в VISUAL.
+//    Текущее использование: 63 / 64 (ENG: каналы + VWAP visible plot).
+//    V282: 8 zone boundary channels added (Sup1/2 top/bot, Res1/2 top/bot).
 // ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
 // При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
@@ -5442,7 +5491,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(280.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(282.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -5508,6 +5557,15 @@ plot(nz(exp_tp1_price, 0.0),              "ENG: Sim TP1",      color=color.new(#
 plot(nz(exp_tp2_price, 0.0),              "ENG: Sim TP2",      color=color.new(#000000, 100))
 plot(nz(exp_sim_dir, 0.0),                "ENG: Sim Dir",      color=color.new(#000000, 100))
 //plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
+// V282: Zone boundary export channels for VISUAL rendering
+plot(nz(_exp_sup1_top, 0.0),              "ENG: Sup1 Top",     color=color.new(#000000, 100))
+plot(nz(_exp_sup1_bot, 0.0),              "ENG: Sup1 Bot",     color=color.new(#000000, 100))
+plot(nz(_exp_sup2_top, 0.0),              "ENG: Sup2 Top",     color=color.new(#000000, 100))
+plot(nz(_exp_sup2_bot, 0.0),              "ENG: Sup2 Bot",     color=color.new(#000000, 100))
+plot(nz(_exp_res1_top, 0.0),              "ENG: Res1 Top",     color=color.new(#000000, 100))
+plot(nz(_exp_res1_bot, 0.0),              "ENG: Res1 Bot",     color=color.new(#000000, 100))
+plot(nz(_exp_res2_top, 0.0),              "ENG: Res2 Top",     color=color.new(#000000, 100))
+plot(nz(_exp_res2_bot, 0.0),              "ENG: Res2 Bot",     color=color.new(#000000, 100))
 // V280: PD visualization moved to VISUAL
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
