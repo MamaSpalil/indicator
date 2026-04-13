@@ -3731,8 +3731,10 @@ f_compute_zone_score(float z_val, float vol_val, bool is_aligned,
     if is_aligned  // HTF aligned
         trend_score := w_trend_norm  // Full alignment
     else
-        // Check if at least ITF is aligned (partial credit)
-        trend_score := w_trend_norm * 0.5  // Partial alignment fallback
+        // V279: Partial credit when HTF is not aligned but ITF may be
+        // Note: ITF alignment not checkable here (not passed as parameter)
+        // 50% credit as conservative estimate for non-counter-trend scenarios
+        trend_score := w_trend_norm * 0.5
     score += trend_score
     // 4. V279: Continuous Sweep / Liquidity Grab [0, w_sweep_norm]
     // sweep_score = 0.3 + 0.7 × min(1.0, quality) — continuous function
@@ -3965,6 +3967,7 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                                 break
                             else
                                 // V279: Check dominance ratio before stopping
+                                // +1 in denominator accounts for this candle being considered (lookahead)
                                 float dominance = candles_found > 0 ? float(correct_count) / float(candles_found + 1) : 0.0
                                 if dominance < inp_cluster_dominance
                                     break
@@ -4004,6 +4007,7 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                             if h > (cluster_h + noise_tol)
                                 break
                             else
+                                // +1 in denominator accounts for this candle being considered (lookahead)
                                 float dominance = candles_found > 0 ? float(correct_count) / float(candles_found + 1) : 0.0
                                 if dominance < inp_cluster_dominance
                                     break
@@ -5384,7 +5388,10 @@ f_mng() =>
                         z.retest_count := nz(z.retest_count, 0) + 1
                         // Reset 30% of age on each retest (diminishing returns)
                         float age_reset_factor = math.max(0.5, 1.0 - 0.3 * math.min(z.retest_count, 3))
-                        z.created_at := math.max(z.created_at, int(bar_index - age_bars * age_reset_factor))
+                        // V279: Move created_at forward to reduce effective age
+                        int new_created_at = int(bar_index - age_bars * age_reset_factor)
+                        if new_created_at > z.created_at
+                            z.created_at := new_created_at
                 // V270: FVG fill tracking
                 if not na(z.fvg_gfx) and z.active
                     float fvg_top = box.get_top(z.fvg_gfx)
