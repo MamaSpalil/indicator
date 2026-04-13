@@ -5429,10 +5429,11 @@ float _exp_res1_bot = 0.0
 float _exp_res2_top = 0.0
 float _exp_res2_bot = 0.0
 if array.size(zone_db) > 0
-    float _best_sup1_dist = 1e18
-    float _best_sup2_dist = 1e18
-    float _best_res1_dist = 1e18
-    float _best_res2_dist = 1e18
+    float _NO_ZONE_DIST = 1e18  // sentinel value: no zone found
+    float _best_sup1_dist = _NO_ZONE_DIST
+    float _best_sup2_dist = _NO_ZONE_DIST
+    float _best_res1_dist = _NO_ZONE_DIST
+    float _best_res2_dist = _NO_ZONE_DIST
     for z in zone_db
         if not z.active
             continue

@@ -851,22 +851,22 @@ if show_zones_v and use_engine_data
     // Draw support zones (green)
     if v_sup1_top > 0 and v_sup1_bot > 0 and v_sup1_top > v_sup1_bot
         _vis_z_sup1 := box.new(_zbox_left, v_sup1_top, bar_index + 5, v_sup1_bot,
-             border_color=color.new(color.rgb(color.r(zone_sup_col), color.g(zone_sup_col), color.b(zone_sup_col)), 20),
+             border_color=color.new(zone_sup_col, 20),
              bgcolor=zone_sup_col, border_width=2, xloc=xloc.bar_index)
     if v_sup2_top > 0 and v_sup2_bot > 0 and v_sup2_top > v_sup2_bot
         _vis_z_sup2 := box.new(_zbox_left, v_sup2_top, bar_index + 5, v_sup2_bot,
-             border_color=color.new(color.rgb(color.r(zone_sup_col), color.g(zone_sup_col), color.b(zone_sup_col)), 30),
-             bgcolor=color.new(color.rgb(color.r(zone_sup_col), color.g(zone_sup_col), color.b(zone_sup_col)), 80),
+             border_color=color.new(zone_sup_col, 30),
+             bgcolor=color.new(zone_sup_col, 80),
              border_width=1, xloc=xloc.bar_index)
     // Draw resistance zones (red)
     if v_res1_top > 0 and v_res1_bot > 0 and v_res1_top > v_res1_bot
         _vis_z_res1 := box.new(_zbox_left, v_res1_top, bar_index + 5, v_res1_bot,
-             border_color=color.new(color.rgb(color.r(zone_res_col), color.g(zone_res_col), color.b(zone_res_col)), 20),
+             border_color=color.new(zone_res_col, 20),
              bgcolor=zone_res_col, border_width=2, xloc=xloc.bar_index)
     if v_res2_top > 0 and v_res2_bot > 0 and v_res2_top > v_res2_bot
         _vis_z_res2 := box.new(_zbox_left, v_res2_top, bar_index + 5, v_res2_bot,
-             border_color=color.new(color.rgb(color.r(zone_res_col), color.g(zone_res_col), color.b(zone_res_col)), 30),
-             bgcolor=color.new(color.rgb(color.r(zone_res_col), color.g(zone_res_col), color.b(zone_res_col)), 80),
+             border_color=color.new(zone_res_col, 30),
+             bgcolor=color.new(zone_res_col, 80),
              border_width=1, xloc=xloc.bar_index)
 
 // V274: Alert conditions for trade hints
