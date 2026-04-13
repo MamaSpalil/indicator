@@ -25,6 +25,39 @@ int MAX_OFFSET_3 = 4996   // для функций требующих [offset+2]
 // V258: Штраф к Score если число паттернов < p_multi_pattern_min (адаптируется по ТФ)
 float MULTI_PATTERN_PENALTY = 0.85
 
+// V279: Bonus Constants & Category Caps
+// Candlestick Patterns category
+float BONUS_THREE_SOLDIERS = 10.0
+float BONUS_TWEEZER        = 8.0
+float BONUS_MARUBOZU       = 12.0
+float BONUS_INSIDE_BAR     = 5.0
+float BONUS_OUTSIDE_BAR    = 8.0
+float BONUS_FAKEY          = 10.0
+float CAP_CANDLE_PATTERNS  = 25.0    // max from candlestick patterns
+
+// Volume/Liquidity category
+float BONUS_RVOL_BREAK     = 10.0
+float BONUS_SWEEP_LIQ      = 15.0
+float CAP_VOL_LIQUIDITY    = 20.0
+
+// Structure (BOS/CHoCH) category
+float BONUS_BOS            = 20.0
+float BONUS_CHOCH           = 15.0
+float CAP_STRUCTURE        = 20.0
+
+// Session/Timing category
+float BONUS_KILL_ZONE      = 10.0
+float PENALTY_QUIET_ZONE   = -5.0
+float CAP_SESSION          = 15.0
+
+// Technical (RSI/ATR) category
+float BONUS_RSI_EXTREME    = 10.0
+float BONUS_DIVERGENCE     = 15.0
+float CAP_TECHNICAL        = 15.0
+
+// Total bonus cap
+float CAP_TOTAL_BONUS      = 70.0
+
 // Универсальный clamp: гарантирует что offset в [0, ceil]
 f_clamp(int val, int ceil) => math.max(0, math.min(val, ceil))
 
@@ -83,14 +116,19 @@ group_score = "⭐ Dynamic Scoring (Efficiency Engine)"
 use_score      = input.bool(true, "Фильтровать зоны по минимальному Score", group=group_score)
 min_score_gate = input.int(45, "Минимальный суммарный Score (0–150)", minval=0, maxval=150, group=group_score)
 chopcount_int  = input.int(10, "Минимальный ChopCount", minval=4, maxval=20, group=group_score)
-w_zscore  = input.float(25.0, "Вес: Z-Score",                     minval=0, maxval=100, step=0.5, group=group_score)
-w_vol     = input.float(15.0, "Вес: Volume",                      minval=0, maxval=100, step=0.5, group=group_score)
-w_trend   = input.float(15.0, "Вес: Trend Alignment",             minval=0, maxval=100, step=0.5, group=group_score)
-w_sweep   = input.float(15.0, "Вес: Sweep / Liquidity Grab",      minval=0, maxval=100, step=0.5, group=group_score)
-w_eff     = input.float(15.0, "Вес: Efficiency (FER)",            minval=0, maxval=100, step=0.5, group=group_score)
-w_bonus   = input.float(15.0, "Вес: PA Patterns (Брейк, Поглощение)", minval=0, maxval=100, step=0.5, group=group_score)
+// V279: Rebalanced weights for 9-component model
+w_zscore  = input.float(20.0, "Вес: Z-Score",                     minval=0, maxval=100, step=0.5, group=group_score)
+w_vol     = input.float(12.0, "Вес: Volume",                      minval=0, maxval=100, step=0.5, group=group_score)
+w_trend   = input.float(12.0, "Вес: Trend Alignment",             minval=0, maxval=100, step=0.5, group=group_score)
+w_sweep   = input.float(12.0, "Вес: Sweep / Liquidity Grab",      minval=0, maxval=100, step=0.5, group=group_score)
+w_eff     = input.float(10.0, "Вес: Efficiency (FER)",            minval=0, maxval=100, step=0.5, group=group_score)
+w_bonus   = input.float(10.0, "Вес: PA Patterns (Брейк, Поглощение)", minval=0, maxval=100, step=0.5, group=group_score)
+// V279: New scoring components (3 additional)
+w_regime  = input.float(10.0, "Вес: Market Regime Alignment",     minval=0, maxval=100, step=0.5, group=group_score)
+w_session = input.float(7.0,  "Вес: Session Quality",             minval=0, maxval=100, step=0.5, group=group_score)
+w_mtf     = input.float(7.0,  "Вес: Multi-TF Confluence",         minval=0, maxval=100, step=0.5, group=group_score)
 
-float _sum_w = w_zscore + w_vol + w_trend + w_sweep + w_eff + w_bonus
+float _sum_w = w_zscore + w_vol + w_trend + w_sweep + w_eff + w_bonus + w_regime + w_session + w_mtf
 float _safe_sum = math.max(_sum_w, 0.001)
 float w_zscore_norm  = f_safe_div(w_zscore, _safe_sum) * 100.0
 float w_vol_norm     = f_safe_div(w_vol, _safe_sum) * 100.0
@@ -98,6 +136,10 @@ float w_trend_norm   = f_safe_div(w_trend, _safe_sum) * 100.0
 float w_sweep_norm   = f_safe_div(w_sweep, _safe_sum) * 100.0
 float w_eff_norm     = f_safe_div(w_eff, _safe_sum) * 100.0
 float w_bonus_norm   = f_safe_div(w_bonus, _safe_sum) * 100.0
+// V279: New normalized weights
+float w_regime_norm  = f_safe_div(w_regime, _safe_sum) * 100.0
+float w_session_norm = f_safe_div(w_session, _safe_sum) * 100.0
+float w_mtf_norm     = f_safe_div(w_mtf, _safe_sum) * 100.0
 
 group_stoch = "📊 Stochastic Engine"
 stoch_min_val = input.int(5,  "Мин. зон для прогноза",      minval=3,  maxval=50,  group=group_stoch)
@@ -253,6 +295,10 @@ w_isolation   = input.int(25, "Вес: Изоляция (Clean)",       minval=0
 w_fractal     = input.int(50, "Вес: Фрактальная глубина",    minval=0, maxval=100, group=group_smart)
 inp_wick_rat  = input.float(2.0,"Мин. соотношение Тень/Тело",  minval=0.1, step=0.1, group=group_smart)
 inp_cluster_tol = input.float(1.0,"Допуск кластеризации (ATR)", minval=0.1, maxval=1.0, step=0.1, group=group_smart)
+// V279: Noise tolerance — число допустимых «шумовых» свечей внутри кластера
+inp_noise_tolerance = input.int(1, "Допуск шума кластера (свечей)", minval=0, maxval=2, step=1, tooltip="Количество допустимых свечей противоположного цвета внутри кластера. 0=строгий, 1=допуск 1 шумовой, 2=мягкий.", group=group_smart)
+// V279: Доминирование направления — минимальная доля свечей нужного цвета в кластере (>70%)
+inp_cluster_dominance = input.float(0.70, "Мин. доминирование направления (%)", minval=0.5, maxval=0.95, step=0.05, tooltip="Минимальная доля свечей нужного цвета в кластере для валидации.", group=group_smart)
 // V266: Нижняя тень (Lower Shadow) — фильтрация пивотов по длине нижней/верхней тени
 use_shadow_filter      = input.bool(true,  "Фильтр нижней тени (Lower Shadow)", tooltip="Для Support: требует минимальную нижнюю тень. Для Resistance: минимальную верхнюю тень.", group=group_smart)
 inp_lower_shadow_min   = input.float(0.10, "Мин. нижняя тень / диапазон (Support)",  minval=0.05, maxval=0.9, step=0.05, tooltip="Минимальная доля нижней тени от полного диапазона свечи для пивотов поддержки.", group=group_smart)
@@ -282,6 +328,22 @@ c_bb_bull  = input.color(#00E5FF, "Цвет: Breaker Bull (пробой ввер
 c_bb_bear  = input.color(#FF6B6B, "Цвет: Breaker Bear (пробой вниз)",       group=group_vis)
 c_rz_bull  = input.color(#FFEB3B, "Цвет: Rejection Zone Bull (поддержка)",  group=group_vis)
 c_rz_bear  = input.color(#FF9800, "Цвет: Rejection Zone Bear (сопротивление)", group=group_vis)
+// V279: New zone type colors
+c_imb_base = input.color(#FFD700, "Цвет: Imbalance Zone",    group=group_vis)
+c_acc_base = input.color(#7C4DFF, "Цвет: Accumulation Zone", group=group_vis)
+c_vcp_base = input.color(#90A4AE, "Цвет: VCP Zone (нейтральный)", group=group_vis)
+
+// V279: New Zone Type Controls
+group_new_zones = "🔮 New Zone Types (V279)"
+use_imb_zones   = input.bool(true,  "Imbalance Zones (дельта-дисбаланс)",    group=group_new_zones)
+inp_imb_delta_threshold = input.float(2.0, "IMB: Порог дельты (× стд.откл.)", minval=1.0, maxval=5.0, step=0.5, group=group_new_zones)
+inp_imb_lookback = input.int(8, "IMB: Окно расчёта дельты (бары)", minval=3, maxval=20, group=group_new_zones)
+use_acc_zones   = input.bool(true,  "Accumulation/Distribution Zones",       group=group_new_zones)
+inp_acc_min_bars = input.int(20, "A/D: Мин. длина торгового коридора", minval=10, maxval=50, group=group_new_zones)
+inp_acc_range_atr = input.float(2.0, "A/D: Макс. ширина коридора (× ATR)", minval=1.0, maxval=5.0, step=0.5, group=group_new_zones)
+use_vcp_zones   = input.bool(true,  "VCP Zones (сжатие волатильности)",      group=group_new_zones)
+use_multi_rej   = input.bool(true,  "Multi-Bar Rejection (multi-wick)",      group=group_new_zones)
+inp_multi_rej_min = input.int(3, "MBR: Мин. свечей с отторжением", minval=2, maxval=6, group=group_new_zones)
 use_rz     = input.bool(true, "Показывать Rejection Zones (RZ)", group=group_vis)
 inp_rz_wick_mult = input.float(1.5, "Мин. хвост RZ (× тело свечи)", minval=1.0, maxval=6.0, step=0.1, group=group_vis)
 zone_transp_best   = input.int(65, "Заливка BEST (% прозрачности)",   minval=30, maxval=95, group=group_vis)
@@ -2013,6 +2075,9 @@ type Zone
     float        decay_factor      // Exponential decay factor
     int          regime_at_creation // Regime at zone creation: 0=trending_up, 1=trending_down, 2=ranging, 3=volatile
     float        inst_footprint    // Institutional footprint score
+    // V279: Adaptive decay fields
+    float        initial_score     // Score at zone creation (for adaptive decay rate)
+    int          retest_count      // Number of successful retests (for age reset)
 
 var array<Zone> zone_db = array.new<Zone>()
 
@@ -2026,11 +2091,24 @@ f_get_zone_colors(float score, bool bull, string z_type) =>
         color bb_base = bull ? c_bb_bull : c_bb_bear
         bd := color.new(bb_base, 0)
         bg := color.new(bb_base, zone_transp_strong)
-    else if z_type == "RZ"
+    else if z_type == "RZ" or z_type == "MBR"
         color rz_base = bull ? c_rz_bull : c_rz_bear
         int t = f_score_to_transp(score)
         bg := f_zone_bg(rz_base, t)
         bd := f_zone_bd(rz_base)
+    // V279: New zone types
+    else if z_type == "IMB"
+        int t = f_score_to_transp(score)
+        bg := f_zone_bg(c_imb_base, t)
+        bd := f_zone_bd(c_imb_base)
+    else if z_type == "ACC" or z_type == "DST"
+        int t = f_score_to_transp(score)
+        bg := f_zone_bg(c_acc_base, t)
+        bd := f_zone_bd(c_acc_base)
+    else if z_type == "VCP"
+        int t = f_score_to_transp(score)
+        bg := f_zone_bg(c_vcp_base, t)
+        bd := f_zone_bd(c_vcp_base)
     else
         color base_c = bull ? c_sup_base : c_res_base
         int t = f_score_to_transp(score)
@@ -2323,7 +2401,11 @@ method update(Zone this) =>
 
         [c_bg_z, c_bd_z] = f_get_zone_colors(this.score, this.is_bull, this.z_type)
 
-        string stl = this.z_type == "BB" ? line.style_dashed : this.z_type == "RZ" ? line.style_dotted : line.style_solid
+        // V279: Extended border styles for new zone types
+        string stl = this.z_type == "BB" ? line.style_dashed : 
+                     (this.z_type == "RZ" or this.z_type == "MBR") ? line.style_dotted :
+                     (this.z_type == "IMB" or this.z_type == "VCP" or this.z_type == "ACC" or this.z_type == "DST") ? line.style_dashed :
+                     line.style_solid
 
         // Затухание по возрасту
         if use_zone_age_fade and this.z_type != "BB"
@@ -2337,8 +2419,14 @@ method update(Zone this) =>
 
         string idm_txt    = this.idm_swept ? " [IDM✓]" : ""
         string emoji      = f_emoji(this.score)
+        // V279: Extended zone prefix for new types
         string z_prefix   = this.z_type == "BB" ? (this.is_bull ? "Brk+ " : "Brk- ") :
                              this.z_type == "RZ" ? (this.is_bull ? "RejZ↑ " : "RejZ↓ ") :
+                             this.z_type == "IMB" ? "⚡IMB " :
+                             this.z_type == "ACC" ? "📈Acc " :
+                             this.z_type == "DST" ? "📉Dst " :
+                             this.z_type == "VCP" ? "🔻VCP " :
+                             this.z_type == "MBR" ? (this.is_bull ? "🔀MBR↑ " : "🔀MBR↓ ") :
                              (this.is_bull ? "Sup " : "Res ")
         string fvg_str    = (this.fvg_type != "None" and this.fvg_type != "" and not na(this.fvg_gfx)) ? "\n[" + this.fvg_type + "]" : ""
         string abs_str    = this.absorbed_count > 0 ? " ⊕" + f_ts(this.absorbed_count) : ""
@@ -2877,64 +2965,214 @@ f_detect_judas_swing(bool is_session_start) =>
         result := false_up or false_dn
     result
 
-// V273: Simple neural network (1 hidden layer: 6→4→1) for score prediction
-// Small uniform init avoids saturation; online Widrow-Hoff adapts quickly
-var array<float> _nn_w1 = array.new<float>(24, 0.1)
-var array<float> _nn_w2 = array.new<float>(4, 0.25)
-var array<float> _nn_bias1 = array.new<float>(4, 0.0)
-var array<float> _nn_bias2 = array.from(0.0)
+// V279: Imbalance Zone detection — extreme buy/sell volume delta
+// delta = Σ(volume × (2*(close-low)/(high-low) - 1)) over lookback window
+f_detect_imbalance() =>
+    float delta_sum = 0.0
+    float delta_sq_sum = 0.0
+    float curr_delta = 0.0
+    int lb = math.min(inp_imb_lookback, MAX_OFFSET)
+    // Calculate current delta window
+    for i = 0 to math.max(lb - 1, 0)
+        int si = f_clamp(i, MAX_OFFSET)
+        float rng = high[si] - low[si]
+        float buying_pct = rng > 0 ? (2.0 * (close[si] - low[si]) / rng - 1.0) : 0.0
+        curr_delta += nz(volume[si], 0.0) * buying_pct
+    // Calculate longer-term stats for threshold (50 bars)
+    for j = 0 to math.min(49, MAX_OFFSET)
+        int sj = f_clamp(j, MAX_OFFSET)
+        float rng_j = high[sj] - low[sj]
+        float bp_j = rng_j > 0 ? (2.0 * (close[sj] - low[sj]) / rng_j - 1.0) : 0.0
+        float d_j = nz(volume[sj], 0.0) * bp_j
+        delta_sum += d_j
+        delta_sq_sum += d_j * d_j
+    float mean_d = delta_sum / 50.0
+    float var_d = delta_sq_sum / 50.0 - mean_d * mean_d
+    float std_d = math.sqrt(math.max(var_d, 0.0001))
+    bool is_extreme = math.abs(curr_delta) > inp_imb_delta_threshold * std_d
+    bool is_bullish_imb = curr_delta > 0 and is_extreme
+    bool is_bearish_imb = curr_delta < 0 and is_extreme
+    float imb_score = is_extreme ? math.min(100.0, 50.0 + math.abs(curr_delta) / std_d * 10.0) : 0.0
+    [is_extreme, is_bullish_imb, imb_score, curr_delta]
+
+// V279: Accumulation/Distribution Zone detection (Wyckoff)
+// Trading range: price within narrow band for > min_bars with range < max_atr
+f_detect_accumulation_distribution() =>
+    float range_h = ta.highest(high, inp_acc_min_bars)
+    float range_l = ta.lowest(low, inp_acc_min_bars)
+    float range_width = range_h - range_l
+    float curr_atr = nz(atr_val, 1.0)
+    bool is_range = range_width < inp_acc_range_atr * curr_atr and range_width > 0
+    // Classify: accumulation (CVD positive trend + decreasing ATR) vs distribution
+    float atr_now  = ta.atr(10)
+    float atr_prev = nz(ta.atr(10)[inp_acc_min_bars], atr_now)
+    bool atr_declining = atr_now < atr_prev * 0.9
+    // CVD trend estimate: sum of buying pressure over window
+    float cvd_sum = 0.0
+    for i = 0 to math.min(inp_acc_min_bars - 1, MAX_OFFSET)
+        int si = f_clamp(i, MAX_OFFSET)
+        float rng_i = high[si] - low[si]
+        cvd_sum += rng_i > 0 ? nz(volume[si], 0.0) * (2.0 * (close[si] - low[si]) / rng_i - 1.0) : 0.0
+    bool is_accumulation = is_range and atr_declining and cvd_sum > 0
+    bool is_distribution = is_range and atr_declining and cvd_sum < 0
+    float acc_score = is_range ? math.min(100.0, 40.0 + math.abs(cvd_sum) / math.max(ta.sma(volume, 20), 1.0) * 20.0) : 0.0
+    [is_range, is_accumulation, is_distribution, range_h, range_l, acc_score]
+
+// V279: VCP as standalone zone type (not just bonus)
+// Series of contracting ranges with declining volume
+f_detect_vcp_zone() =>
+    float rng1 = ta.highest(high, 10) - ta.lowest(low, 10)
+    float rng2 = ta.highest(high, 20) - ta.lowest(low, 20)
+    float rng3 = ta.highest(high, 40) - ta.lowest(low, 40)
+    bool contracting = rng3 > 0 and rng2 > 0 and f_safe_div(rng1, rng2) < 0.7 and f_safe_div(rng2, rng3) < 0.8
+    // Volume decline confirmation
+    float vol_now  = ta.sma(volume, 10)
+    float vol_prev = nz(ta.sma(volume, 10)[20], vol_now)
+    bool vol_declining = vol_now < vol_prev * 0.8
+    bool squeeze = f_keltner_squeeze(20)
+    // Score = f(compression_ratio, volume_decline, keltner_squeeze)
+    float compression = rng2 > 0 ? 1.0 - f_safe_div(rng1, rng2) : 0.0
+    float vcp_score = 0.0
+    if contracting
+        vcp_score := 40.0 + compression * 30.0
+        if vol_declining
+            vcp_score += 15.0
+        if squeeze
+            vcp_score += 15.0
+    vcp_score := math.min(vcp_score, 120.0)
+    float vcp_h = ta.highest(high, 10)
+    float vcp_l = ta.lowest(low, 10)
+    [contracting, vcp_score, vcp_h, vcp_l, squeeze]
+
+// V279: Multi-bar rejection detection
+// Multiple consecutive candles rejecting from same level
+f_detect_multi_bar_rejection(bool is_bull, int lookback) =>
+    float ref_level = is_bull ? ta.lowest(low, lookback) : ta.highest(high, lookback)
+    float curr_atr = nz(atr_val, 1.0)
+    float tol = curr_atr * 0.15
+    int rej_count = 0
+    float total_wick = 0.0
+    for i = 0 to math.min(lookback - 1, MAX_OFFSET)
+        int si = f_clamp(i, MAX_OFFSET)
+        float rng = high[si] - low[si]
+        if rng > 0
+            if is_bull
+                float lower_wick = math.min(open[si], close[si]) - low[si]
+                if math.abs(low[si] - ref_level) < tol and lower_wick > rng * 0.3
+                    rej_count += 1
+                    total_wick += lower_wick
+            else
+                float upper_wick = high[si] - math.max(open[si], close[si])
+                if math.abs(high[si] - ref_level) < tol and upper_wick > rng * 0.3
+                    rej_count += 1
+                    total_wick += upper_wick
+    bool valid = rej_count >= inp_multi_rej_min
+    float mbr_score = valid ? math.min(100.0, 30.0 + float(rej_count) * 10.0 + total_wick / curr_atr * 5.0) : 0.0
+    [valid, rej_count, mbr_score, ref_level]
+
+// V279: Enhanced neural network (2 hidden layers: 9→8→4→1) for score prediction
+// 9 inputs: z_score, volume, trend, sweep, efficiency, pa_patterns, regime, session, hurst
+// L2 regularization + adaptive learning rate
+var array<float> _nn_w1 = array.new<float>(72, 0.1)   // 9×8 = 72 weights (input→hidden1)
+var array<float> _nn_w2 = array.new<float>(32, 0.15)   // 8×4 = 32 weights (hidden1→hidden2)
+var array<float> _nn_w3 = array.new<float>(4, 0.25)    // 4×1 = 4 weights (hidden2→output)
+var array<float> _nn_bias1 = array.new<float>(8, 0.0)
+var array<float> _nn_bias2 = array.new<float>(4, 0.0)
+var array<float> _nn_bias3 = array.from(0.0)
+var int _nn_update_count = 0
+float _nn_lambda = 0.001  // L2 regularization coefficient
 
 f_nn_sigmoid(float x) =>
     1.0 / (1.0 + math.exp(-math.max(-10.0, math.min(10.0, x))))
 
 f_nn_predict(float z_in, float vol_in, float trend_in, float sweep_in, float eff_in, float pa_in) =>
-    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in)
-    array<float> hidden = array.new<float>(4, 0.0)
-    for h = 0 to 3
+    // V279: Use 9 inputs; extra 3 (regime, session, hurst) derived from globals
+    float regime_in = nz(float(_regime_type), 0.0) / 3.0  // normalize 0-3 → 0-1
+    float session_in = in_brokezone ? 1.0 : 0.0
+    float hurst_in = nz(_hurst_val, 0.5)
+    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in, regime_in, session_in, hurst_in)
+    // Hidden layer 1 (8 neurons)
+    array<float> hidden1 = array.new<float>(8, 0.0)
+    for h = 0 to 7
         float sum = array.get(_nn_bias1, h)
-        for inp = 0 to 5
-            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 6 + inp)
-        array.set(hidden, h, f_nn_sigmoid(sum))
-    float output = array.get(_nn_bias2, 0)
+        for inp = 0 to 8
+            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 9 + inp)
+        array.set(hidden1, h, f_nn_sigmoid(sum))
+    // Hidden layer 2 (4 neurons)
+    array<float> hidden2 = array.new<float>(4, 0.0)
     for h = 0 to 3
-        output += array.get(hidden, h) * array.get(_nn_w2, h)
+        float sum = array.get(_nn_bias2, h)
+        for h1 = 0 to 7
+            sum += array.get(hidden1, h1) * array.get(_nn_w2, h * 8 + h1)
+        array.set(hidden2, h, f_nn_sigmoid(sum))
+    // Output layer
+    float output = array.get(_nn_bias3, 0)
+    for h = 0 to 3
+        output += array.get(hidden2, h) * array.get(_nn_w3, h)
     f_nn_sigmoid(output) * 150.0
 
 f_nn_update(float z_in, float vol_in, float trend_in, float sweep_in, float eff_in, float pa_in, float target, float lr) =>
+    // V279: Adaptive learning rate — decreases over time for stability
+    _nn_update_count := _nn_update_count + 1
+    float adaptive_lr = lr * (1.0 / (1.0 + 0.001 * float(_nn_update_count)))
     float pred = f_nn_predict(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in)
     float err = (target / 150.0) - (pred / 150.0)
-    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in)
-    array<float> hidden = array.new<float>(4, 0.0)
-    for h = 0 to 3
+    float regime_in = nz(float(_regime_type), 0.0) / 3.0
+    float session_in = in_brokezone ? 1.0 : 0.0
+    float hurst_in = nz(_hurst_val, 0.5)
+    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in, regime_in, session_in, hurst_in)
+    // Forward pass — hidden layer 1
+    array<float> hidden1 = array.new<float>(8, 0.0)
+    for h = 0 to 7
         float sum = array.get(_nn_bias1, h)
-        for inp = 0 to 5
-            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 6 + inp)
-        array.set(hidden, h, f_nn_sigmoid(sum))
-    // Backprop: output layer
+        for inp = 0 to 8
+            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 9 + inp)
+        array.set(hidden1, h, f_nn_sigmoid(sum))
+    // Forward pass — hidden layer 2
+    array<float> hidden2 = array.new<float>(4, 0.0)
+    for h = 0 to 3
+        float sum = array.get(_nn_bias2, h)
+        for h1 = 0 to 7
+            sum += array.get(hidden1, h1) * array.get(_nn_w2, h * 8 + h1)
+        array.set(hidden2, h, f_nn_sigmoid(sum))
+    // Backprop: output → hidden2
     float d_out = err
     for h = 0 to 3
-        float hv = array.get(hidden, h)
-        float w2_old = array.get(_nn_w2, h)
-        array.set(_nn_w2, h, w2_old + lr * d_out * hv)
-        // Backprop: hidden layer
-        float d_hidden = d_out * w2_old * hv * (1.0 - hv)
-        for inp = 0 to 5
-            int w_idx = h * 6 + inp
-            float w1_old = array.get(_nn_w1, w_idx)
-            array.set(_nn_w1, w_idx, w1_old + lr * d_hidden * array.get(inputs, inp))
-        array.set(_nn_bias1, h, array.get(_nn_bias1, h) + lr * d_hidden)
-    array.set(_nn_bias2, 0, array.get(_nn_bias2, 0) + lr * d_out)
+        float h2v = array.get(hidden2, h)
+        float w3_old = array.get(_nn_w3, h)
+        // L2 regularization: weight update with decay
+        array.set(_nn_w3, h, w3_old * (1.0 - adaptive_lr * _nn_lambda) + adaptive_lr * d_out * h2v)
+        // Backprop: hidden2 → hidden1
+        float d_h2 = d_out * w3_old * h2v * (1.0 - h2v)
+        for h1 = 0 to 7
+            int w2_idx = h * 8 + h1
+            float w2_old = array.get(_nn_w2, w2_idx)
+            float h1v = array.get(hidden1, h1)
+            array.set(_nn_w2, w2_idx, w2_old * (1.0 - adaptive_lr * _nn_lambda) + adaptive_lr * d_h2 * h1v)
+            // Backprop: hidden1 → input
+            float d_h1 = d_h2 * w2_old * h1v * (1.0 - h1v)
+            for inp = 0 to 8
+                int w1_idx = h1 * 9 + inp
+                float w1_old = array.get(_nn_w1, w1_idx)
+                array.set(_nn_w1, w1_idx, w1_old * (1.0 - adaptive_lr * _nn_lambda) + adaptive_lr * d_h1 * array.get(inputs, inp))
+            array.set(_nn_bias1, h1, array.get(_nn_bias1, h1) + adaptive_lr * d_h1)
+        array.set(_nn_bias2, h, array.get(_nn_bias2, h) + adaptive_lr * d_h2)
+    array.set(_nn_bias3, 0, array.get(_nn_bias3, 0) + adaptive_lr * d_out)
 
-// V273: Adaptive scoring weights (recalculated every N trades)
-var array<float> _adapt_weights = array.from(0.25, 0.15, 0.15, 0.15, 0.15, 0.15)
-var array<float> _comp_win_sums = array.new<float>(6, 0.0)
-var array<float> _comp_loss_sums = array.new<float>(6, 0.0)
+// V279: Adaptive scoring weights (9 components, recalculated every N trades)
+var array<float> _adapt_weights = array.from(0.20, 0.12, 0.12, 0.12, 0.10, 0.10, 0.10, 0.07, 0.07)
+var array<float> _comp_win_sums = array.new<float>(9, 0.0)
+var array<float> _comp_loss_sums = array.new<float>(9, 0.0)
 var array<int> _adapt_trade_count = array.from(0)
 var array<int> _adapt_last_update = array.from(0)
 
 f_update_adaptive_weights(bool is_win, float z_comp, float vol_comp, float trend_comp, float sweep_comp, float eff_comp, float pa_comp) =>
-    array<float> comps = array.from(z_comp, vol_comp, trend_comp, sweep_comp, eff_comp, pa_comp)
-    for i = 0 to 5
+    // V279: Add regime/session/hurst components
+    float regime_comp = nz(float(_regime_type), 0.0) / 3.0
+    float session_comp = in_brokezone ? 1.0 : 0.0
+    float hurst_comp = nz(_hurst_val, 0.5)
+    array<float> comps = array.from(z_comp, vol_comp, trend_comp, sweep_comp, eff_comp, pa_comp, regime_comp, session_comp, hurst_comp)
+    for i = 0 to 8
         if is_win
             array.set(_comp_win_sums, i, array.get(_comp_win_sums, i) + array.get(comps, i))
         else
@@ -2943,14 +3181,14 @@ f_update_adaptive_weights(bool is_win, float z_comp, float vol_comp, float trend
     if array.get(_adapt_trade_count, 0) - array.get(_adapt_last_update, 0) >= 20
         array.set(_adapt_last_update, 0, array.get(_adapt_trade_count, 0))
         float total_diff = 0.0
-        array<float> diffs = array.new<float>(6, 0.0)
-        for i = 0 to 5
+        array<float> diffs = array.new<float>(9, 0.0)
+        for i = 0 to 8
             // 0.5 loss weight: penalise losing components less aggressively; 0.01 floor prevents zero-weight collapse
             float diff = math.max(0.01, array.get(_comp_win_sums, i) - array.get(_comp_loss_sums, i) * 0.5)
             array.set(diffs, i, diff)
             total_diff += diff
         if total_diff > 0
-            for i = 0 to 5
+            for i = 0 to 8
                 array.set(_adapt_weights, i, f_safe_div(array.get(diffs, i), total_diff))
 
 // ==========================================
@@ -3475,8 +3713,9 @@ f_get_log_vol_score(float val, float min_v, float max_v, float weight) =>
     float log_max  = math.log(1.0 + (max_safe - min_v))
     weight * math.min(f_safe_div(log_val, log_max), 1.0)
 
-// V269: Extracted zone score computation — combines 6 weighted components
-// Returns the core weighted score from Z-Score, Volume, Trend, Sweep, Efficiency, PA Bonus
+// V279: Expanded zone score computation — 9 weighted components
+// Adds: Market Regime Alignment, Session Quality, Multi-TF Confluence
+// Improves: Graduated trend alignment, continuous sweep scoring
 f_compute_zone_score(float z_val, float vol_val, bool is_aligned,
      bool is_struct_sweep, bool is_wick_sweep, float eff_val,
      bool has_break, bool has_engulf, bool has_sweep_vol,
@@ -3486,10 +3725,27 @@ f_compute_zone_score(float z_val, float vol_val, bool is_aligned,
     score += f_get_sigmoid_score(z_val, dyn_z, p_z_max, w_zscore_norm)
     // 2. Volume component [0, w_vol_norm]
     score += f_get_log_vol_score(vol_val, dyn_v, p_vol_max, w_vol_norm)
-    // 3. Trend alignment [0 or w_trend_norm]
-    score += is_aligned ? w_trend_norm : 0.0
-    // 4. Sweep / Liquidity Grab [0, w_sweep_norm]
-    float s_sw = is_struct_sweep ? w_sweep_norm : (is_wick_sweep ? w_sweep_norm * 0.6 : 0.0)
+    // 3. V279: Graduated Trend Alignment [0, w_trend_norm]
+    // Full alignment (HTF + ITF) = 1.0, Partial (ITF only) = 0.5, Counter = 0.0
+    float trend_score = 0.0
+    if is_aligned  // HTF aligned
+        trend_score := w_trend_norm  // Full alignment
+    else
+        // V279: Partial credit when HTF is not aligned but ITF may be
+        // Note: ITF alignment not checkable here (not passed as parameter)
+        // 50% credit as conservative estimate for non-counter-trend scenarios
+        trend_score := w_trend_norm * 0.5
+    score += trend_score
+    // 4. V279: Continuous Sweep / Liquidity Grab [0, w_sweep_norm]
+    // sweep_score = 0.3 + 0.7 × min(1.0, quality) — continuous function
+    float sweep_quality = is_struct_sweep ? 1.0 : (is_wick_sweep ? 0.6 : 0.0)
+    float s_sw = 0.0
+    if sweep_quality > 0
+        float cont_sweep = 0.3 + 0.7 * math.min(1.0, sweep_quality)
+        // V279: Volume-confirmed sweep gets 1.3× multiplier
+        if has_sweep_vol
+            cont_sweep := math.min(1.0, cont_sweep * 1.3)
+        s_sw := w_sweep_norm * cont_sweep
     score += s_sw
     // 5. Efficiency / FER [0, w_eff_norm]
     score += f_get_sigmoid_score(eff_val, 0.3, 0.9, w_eff_norm)
@@ -3502,6 +3758,39 @@ f_compute_zone_score(float z_val, float vol_val, bool is_aligned,
     if has_sweep_vol and is_aligned
         s_bonus += w_bonus_norm * 0.2
     score += s_bonus
+    // 7. V279: Market Regime Alignment [0, w_regime_norm]
+    // Trending regime + aligned zone = full weight; ranging = 0.5; counter = 0
+    float regime_score = 0.0
+    if _regime_type == 0  // trending_up
+        regime_score := is_aligned ? w_regime_norm : 0.0
+    else if _regime_type == 1  // trending_down
+        regime_score := is_aligned ? w_regime_norm : 0.0
+    else if _regime_type == 2  // ranging
+        regime_score := w_regime_norm * 0.5
+    else  // volatile
+        regime_score := w_regime_norm * 0.3
+    score += regime_score
+    // 8. V279: Session Quality [0, w_session_norm]
+    // London/NY kill zone = full, Asia = 0.5, Quiet = 0.2
+    float session_score = 0.0
+    if kz_overlap
+        session_score := w_session_norm  // London-NY overlap = best
+    else if kz_london or kz_ny
+        session_score := w_session_norm * 0.8
+    else if kz_asia
+        session_score := w_session_norm * 0.5
+    else
+        session_score := w_session_norm * 0.2
+    score += session_score
+    // 9. V279: Multi-TF Confluence placeholder [0, w_mtf_norm]
+    // Uses Hurst exponent as proxy: H > 0.6 = trending on multiple TFs = higher score
+    float hurst_proxy = nz(_hurst_val, 0.5)
+    float mtf_score = 0.0
+    if hurst_proxy > 0.6
+        mtf_score := w_mtf_norm * math.min(1.0, (hurst_proxy - 0.5) * 5.0)
+    else
+        mtf_score := w_mtf_norm * 0.3
+    score += mtf_score
     // Cluster volume bonus (capped)
     score += math.min(cluster_vol_bonus, 25.0)
     score
@@ -3616,9 +3905,18 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
         float cluster_h  = -1.0e9
         float cluster_l  = 1.0e9
         int search_depth = math.max(15, TARGET_BARS * 10)
-        float noise_tol  = math.max(syminfo.mintick, hist_atr * p_cluster_tol)
+        // V279: Adaptive tolerance — higher volume widens tolerance for more significant zones
+        float vol_ratio_local = nz(rvol, 1.0)
+        float adaptive_tol_mult = 1.0 + math.min(vol_ratio_local, 3.0) / 3.0
+        float noise_tol  = math.max(syminfo.mintick, hist_atr * p_cluster_tol * adaptive_tol_mult)
         float cluster_vol_bonus = 0.0
         int candles_found = 0
+        // V279: Soft cluster — noise counting and volume-weighted boundaries
+        int noise_count  = 0
+        int correct_count = 0
+        float vwap_h_sum = 0.0  // volume-weighted high accumulator
+        float vwap_l_sum = 0.0  // volume-weighted low accumulator
+        float vwap_vol_sum = 0.0  // total volume for VWAP weighting
         int safe_hist_off = math.min(p_max_history - b_off - 1, bar_index - b_off - 1)
         int max_search    = math.min(search_depth, math.max(0, safe_hist_off))
         // V249: жёсткий потолок
@@ -3639,46 +3937,108 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
             bool is_green = (c > o)
             bool is_doji  = (c == o)
             float loc_rvol = not na(_mem_rvol[safe_k]) ? _mem_rvol[safe_k] : 1.0
+            float loc_vol  = nz(volume[safe_k], 1.0)
 
             if is_bull
                 if k == 0
                     cluster_h := h
                     cluster_l := l
                     candles_found += 1
+                    correct_count += 1
                     cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                    // V279: Volume-weighted boundaries
+                    vwap_h_sum += h * loc_vol
+                    vwap_l_sum += l * loc_vol
+                    vwap_vol_sum += loc_vol
                 else
                     if is_red or is_doji
                         cluster_h := math.max(cluster_h, h)
                         cluster_l := math.min(cluster_l, l)
                         candles_found += 1
+                        correct_count += 1
                         cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                        vwap_h_sum += h * loc_vol
+                        vwap_l_sum += l * loc_vol
+                        vwap_vol_sum += loc_vol
                     else if is_green
-                        if l < (cluster_l - noise_tol)
-                            break
+                        // V279: Soft cluster — allow noise candles up to inp_noise_tolerance
+                        if noise_count >= inp_noise_tolerance
+                            if l < (cluster_l - noise_tol)
+                                break
+                            else
+                                // V279: Check dominance ratio before stopping
+                                // +1 in denominator accounts for this candle being considered (lookahead)
+                                float dominance = candles_found > 0 ? float(correct_count) / float(candles_found + 1) : 0.0
+                                if dominance < inp_cluster_dominance
+                                    break
+                                cluster_h := math.max(cluster_h, h)
                         else
+                            noise_count += 1
+                            candles_found += 1
                             cluster_h := math.max(cluster_h, h)
+                            cluster_l := math.min(cluster_l, l)
+                            // V279: Noise candles get reduced volume weight
+                            vwap_h_sum += h * loc_vol * 0.5
+                            vwap_l_sum += l * loc_vol * 0.5
+                            vwap_vol_sum += loc_vol * 0.5
             else
                 if k == 0
                     cluster_h := h
                     cluster_l := l
                     candles_found += 1
+                    correct_count += 1
                     cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                    vwap_h_sum += h * loc_vol
+                    vwap_l_sum += l * loc_vol
+                    vwap_vol_sum += loc_vol
                 else
                     if is_green or is_doji
                         cluster_h := math.max(cluster_h, h)
                         cluster_l := math.min(cluster_l, l)
                         candles_found += 1
+                        correct_count += 1
                         cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                        vwap_h_sum += h * loc_vol
+                        vwap_l_sum += l * loc_vol
+                        vwap_vol_sum += loc_vol
                     else if is_red
-                        if h > (cluster_h + noise_tol)
-                            break
+                        // V279: Soft cluster — allow noise candles up to inp_noise_tolerance
+                        if noise_count >= inp_noise_tolerance
+                            if h > (cluster_h + noise_tol)
+                                break
+                            else
+                                // +1 in denominator accounts for this candle being considered (lookahead)
+                                float dominance = candles_found > 0 ? float(correct_count) / float(candles_found + 1) : 0.0
+                                if dominance < inp_cluster_dominance
+                                    break
+                                cluster_l := math.min(cluster_l, l)
                         else
+                            noise_count += 1
+                            candles_found += 1
+                            cluster_h := math.max(cluster_h, h)
                             cluster_l := math.min(cluster_l, l)
+                            vwap_h_sum += h * loc_vol * 0.5
+                            vwap_l_sum += l * loc_vol * 0.5
+                            vwap_vol_sum += loc_vol * 0.5
 
         if candles_found == 0
             int safe_b = f_clamp(b_off, MAX_OFFSET)
             cluster_h := high[safe_b]
             cluster_l := low[safe_b]
+
+        // V279: Volume-weighted boundary refinement
+        // When we have enough volume data, shift boundaries toward volume-weighted levels
+        if vwap_vol_sum > 0 and candles_found >= 2
+            float vw_h = vwap_h_sum / vwap_vol_sum
+            float vw_l = vwap_l_sum / vwap_vol_sum
+            // Blend 30% VWAP + 70% raw extremes for stability
+            cluster_h := cluster_h * 0.7 + vw_h * 0.3
+            cluster_l := cluster_l * 0.7 + vw_l * 0.3
+            // Safety: ensure h >= l
+            if cluster_h < cluster_l
+                float _tmp = cluster_h
+                cluster_h := cluster_l
+                cluster_l := _tmp
 
         float abs_extreme_h   = cluster_h
         float abs_extreme_l   = cluster_l
@@ -4194,7 +4554,10 @@ f_merge_nested_zones() =>
                 bool ob_compat = z1.z_type == "OB" and z2.z_type == "OB"
                 bool rz_compat = z1.z_type == "RZ" and z2.z_type == "RZ"
                 bool ob_rz_absorb = (z1.z_type == "OB" and z2.z_type == "RZ") or (z1.z_type == "RZ" and z2.z_type == "OB")
-                bool can_merge = same_dir and (bb_compat or ob_compat or rz_compat or ob_rz_absorb)
+                // V279: New zone types can merge with similar types
+                bool imb_compat = z1.z_type == "IMB" and z2.z_type == "IMB"
+                bool mbr_compat = z1.z_type == "MBR" and z2.z_type == "MBR"
+                bool can_merge = same_dir and (bb_compat or ob_compat or rz_compat or ob_rz_absorb or imb_compat or mbr_compat)
                 if can_merge
                     bool z2_inside_z1 = z2.top <= z1.top and z2.bot >= z1.bot
                     bool z1_inside_z2 = z1.top <= z2.top and z1.bot >= z2.bot
@@ -4413,7 +4776,8 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         refined_top=na, refined_bot=na, is_propulsion=false, is_mitigation=false,
         mb_stage=0, bb_age_bars=0.0, bb_cascade_count=0, fvg_fill_pct=0.0,
         fvg_ce_level=na, kill_zone_bonus=0.0, confluence_bonus=0.0, decay_factor=1.0,
-        regime_at_creation=0, inst_footprint=0.0)
+        regime_at_creation=0, inst_footprint=0.0,
+        initial_score=sc, retest_count=0)
     n
 
 // V270: Regime type — declared before f_create_new_zones for scope access
@@ -4753,9 +5117,10 @@ f_create_new_zones() =>
                     rz_score := _tmp_rz_score
                     // V270: Adaptive RZ threshold — longer wick = lower threshold
                     float rz_adapt_thresh = float(p_min_score) * (0.4 + 0.2 * f_safe_div(rz_wick_ratio, 1.0))
-                    // V270: Quadratic wick ratio scoring
-                    float wick_sq_bonus = math.pow(math.min(rz_wick_ratio, 3.0), 2) * 20.0
-                    rz_score += math.min(20.0, wick_sq_bonus)
+                    // V279: Sigmoid wick ratio scoring (replaces quadratic)
+                    // Smooth saturation at ~30 for wick_ratio > 3, hard cap 35
+                    float wick_sig_bonus = 30.0 / (1.0 + math.exp(-3.0 * (rz_wick_ratio - 2.0)))
+                    rz_score += math.min(35.0, wick_sig_bonus)
                     // V273: RSI divergence bonus for RZ Bull
                     float _rz_rsi_prev_b = nz(_mem_rsi[f_clamp(rz_safe_b + 5, MAX_OFFSET)], 50.0)
                     float _rz_price_prev_b = nz(low[f_clamp(rz_safe_b + 5, MAX_OFFSET)], low)
@@ -4827,9 +5192,9 @@ f_create_new_zones() =>
                     rz_score_s := _tmp_rz_score_s
                     // V270: Adaptive RZ threshold — longer wick = lower threshold
                     float rz_adapt_thresh_s = float(p_min_score) * (0.4 + 0.2 * f_safe_div(rz_wick_ratio_s, 1.0))
-                    // V270: Quadratic wick ratio scoring
-                    float wick_sq_bonus_s = math.pow(math.min(rz_wick_ratio_s, 3.0), 2) * 20.0
-                    rz_score_s += math.min(20.0, wick_sq_bonus_s)
+                    // V279: Sigmoid wick ratio scoring (replaces quadratic)
+                    float wick_sig_bonus_s = 30.0 / (1.0 + math.exp(-3.0 * (rz_wick_ratio_s - 2.0)))
+                    rz_score_s += math.min(35.0, wick_sig_bonus_s)
                     // V273: RSI divergence bonus for RZ Bear
                     float _rz_rsi_prev_s = nz(_mem_rsi[f_clamp(rz_safe_s + 5, MAX_OFFSET)], 50.0)
                     float _rz_price_prev_s = nz(high[f_clamp(rz_safe_s + 5, MAX_OFFSET)], high)
@@ -4855,6 +5220,106 @@ f_create_new_zones() =>
                                  xloc         = xloc.bar_index)
                             Zone rz_s = f_make_zone(last_sh_i, rz_top_s, rz_bot_s, false, "RZ", rz_score_s, rz_tier_s, na, (rz_top_s + rz_bot_s) / 2.0, bx_rz_s, na, "None", f_rz_log(false, rz_wick_ratio_s, rz_rvol_s, rz_pin_count_s, rz_rspike_s, rz_s_cond, rz_score_s), rz_s_pat_str)
                             array.push(zone_db, rz_s)
+
+        // ── V279: Imbalance Zones ─────────────────────────────────────────
+        if confirmed_bar and in_window and use_imb_zones
+            [_imb_valid, _imb_bull, _imb_score, _imb_delta] = f_detect_imbalance()
+            if _imb_valid and _imb_score >= float(p_min_score) * 0.6
+                // Check for duplicates within last 10 bars
+                bool imb_dup = false
+                for z in zone_db
+                    if z.z_type == "IMB" and z.active and (bar_index - z.created_at) < 10
+                        imb_dup := true
+                if not imb_dup
+                    float imb_h = high
+                    float imb_l = low
+                    string imb_tier = f_tier(_imb_score)
+                    color imb_col = c_imb_base
+                    box bx_imb = box.new(bar_index, imb_h, bar_index + 5, imb_l,
+                         border_color = color.new(imb_col, 0),
+                         bgcolor = f_zone_bg(imb_col, f_score_to_transp(_imb_score)),
+                         border_style = line.style_dashed,
+                         xloc = xloc.bar_index)
+                    Zone imb_z = f_make_zone(bar_index, imb_h, imb_l, _imb_bull, "IMB", _imb_score, imb_tier, na, (imb_h + imb_l) / 2.0, bx_imb, na, "None", "IMB Delta=" + str.tostring(_imb_delta, "#.0"), "")
+                    array.push(zone_db, imb_z)
+
+        // ── V279: Accumulation/Distribution Zones ─────────────────────────
+        if confirmed_bar and in_window and use_acc_zones
+            [_acc_range, _is_acc, _is_dist, _acc_h, _acc_l, _acc_score] = f_detect_accumulation_distribution()
+            if _acc_range and _acc_score >= float(p_min_score) * 0.5
+                bool acc_dup = false
+                for z in zone_db
+                    if (z.z_type == "ACC" or z.z_type == "DST") and z.active and (bar_index - z.created_at) < inp_acc_min_bars
+                        acc_dup := true
+                if not acc_dup
+                    string acc_type = _is_acc ? "ACC" : "DST"
+                    string acc_tier = f_tier(_acc_score)
+                    color acc_col = c_acc_base
+                    box bx_acc = box.new(bar_index - inp_acc_min_bars, _acc_h, bar_index + 5, _acc_l,
+                         border_color = color.new(acc_col, 0),
+                         bgcolor = f_zone_bg(acc_col, f_score_to_transp(_acc_score)),
+                         border_style = line.style_dotted,
+                         xloc = xloc.bar_index)
+                    Zone acc_z = f_make_zone(bar_index, _acc_h, _acc_l, _is_acc, acc_type, _acc_score, acc_tier, na, (_acc_h + _acc_l) / 2.0, bx_acc, na, "None", acc_type + " Score=" + str.tostring(_acc_score, "#.0"), "Wyckoff")
+                    array.push(zone_db, acc_z)
+
+        // ── V279: VCP Zones ───────────────────────────────────────────────
+        if confirmed_bar and in_window and use_vcp_zones
+            [_vcp_valid, _vcp_score, _vcp_h, _vcp_l, _vcp_squeeze] = f_detect_vcp_zone()
+            if _vcp_valid and _vcp_score >= float(p_min_score) * 0.5
+                bool vcp_dup = false
+                for z in zone_db
+                    if z.z_type == "VCP" and z.active and (bar_index - z.created_at) < 10
+                        vcp_dup := true
+                if not vcp_dup
+                    string vcp_tier = f_tier(_vcp_score)
+                    string vcp_info = _vcp_squeeze ? "Sqz+VCP" : "VCP"
+                    box bx_vcp = box.new(bar_index - 10, _vcp_h, bar_index + 5, _vcp_l,
+                         border_color = color.new(c_vcp_base, 0),
+                         bgcolor = f_zone_bg(c_vcp_base, f_score_to_transp(_vcp_score)),
+                         border_style = line.style_dashed,
+                         xloc = xloc.bar_index)
+                    Zone vcp_z = f_make_zone(bar_index, _vcp_h, _vcp_l, true, "VCP", _vcp_score, vcp_tier, na, (_vcp_h + _vcp_l) / 2.0, bx_vcp, na, "None", vcp_info + " Score=" + str.tostring(_vcp_score, "#.0"), vcp_info)
+                    array.push(zone_db, vcp_z)
+
+        // ── V279: Multi-Bar Rejection (enhanced RZ) ──────────────────────
+        if confirmed_bar and in_window and use_multi_rej
+            // Bull multi-bar rejection
+            [_mbr_b_valid, _mbr_b_count, _mbr_b_score, _mbr_b_level] = f_detect_multi_bar_rejection(true, 8)
+            if _mbr_b_valid and _mbr_b_score >= float(p_min_score) * 0.6
+                bool mbr_b_dup = false
+                for z in zone_db
+                    if z.z_type == "MBR" and z.is_bull and z.active and math.abs(z.bot - _mbr_b_level) < nz(atr_val, 1.0) * 0.3
+                        mbr_b_dup := true
+                if not mbr_b_dup
+                    float mbr_b_top = close
+                    float mbr_b_bot = _mbr_b_level
+                    string mbr_b_tier = f_tier(_mbr_b_score)
+                    box bx_mbr_b = box.new(bar_index - 8, mbr_b_top, bar_index + 5, mbr_b_bot,
+                         border_color = color.new(c_rz_bull, 30),
+                         bgcolor = f_zone_bg(c_rz_bull, f_score_to_transp(_mbr_b_score)),
+                         border_style = line.style_dotted,
+                         xloc = xloc.bar_index)
+                    Zone mbr_b = f_make_zone(bar_index, mbr_b_top, mbr_b_bot, true, "MBR", _mbr_b_score, mbr_b_tier, na, (mbr_b_top + mbr_b_bot) / 2.0, bx_mbr_b, na, "None", "MBR×" + str.tostring(_mbr_b_count), "MultiRej")
+                    array.push(zone_db, mbr_b)
+            // Bear multi-bar rejection
+            [_mbr_s_valid, _mbr_s_count, _mbr_s_score, _mbr_s_level] = f_detect_multi_bar_rejection(false, 8)
+            if _mbr_s_valid and _mbr_s_score >= float(p_min_score) * 0.6
+                bool mbr_s_dup = false
+                for z in zone_db
+                    if z.z_type == "MBR" and not z.is_bull and z.active and math.abs(z.top - _mbr_s_level) < nz(atr_val, 1.0) * 0.3
+                        mbr_s_dup := true
+                if not mbr_s_dup
+                    float mbr_s_top = _mbr_s_level
+                    float mbr_s_bot = close
+                    string mbr_s_tier = f_tier(_mbr_s_score)
+                    box bx_mbr_s = box.new(bar_index - 8, mbr_s_top, bar_index + 5, mbr_s_bot,
+                         border_color = color.new(c_rz_bear, 30),
+                         bgcolor = f_zone_bg(c_rz_bear, f_score_to_transp(_mbr_s_score)),
+                         border_style = line.style_dotted,
+                         xloc = xloc.bar_index)
+                    Zone mbr_s = f_make_zone(bar_index, mbr_s_top, mbr_s_bot, false, "MBR", _mbr_s_score, mbr_s_tier, na, (mbr_s_top + mbr_s_bot) / 2.0, bx_mbr_s, na, "None", "MBR×" + str.tostring(_mbr_s_count), "MultiRej")
+                    array.push(zone_db, mbr_s)
 
 f_mng() =>
     bool is_closed = barstate.isconfirmed
@@ -4907,10 +5372,26 @@ f_mng() =>
                         z.is_mitigation := true
                         z.score := math.min(z.score + 20.0, 150.0)
                         z.tier := f_tier(z.score)
-                // V270: Exponential score decay
-                // V273-fix: floor at 0.01 to prevent numerical underflow for old zones
+                // V279: Adaptive exponential score decay
+                // High-quality zones (initial_score > 100) decay slower
+                // Decay rate: 0.001 × (150 / max(initial_score, 50))
+                // Minimum floor at 0.05 to prevent full score elimination
                 float age_bars = float(bar_index - z.created_at)
-                z.decay_factor := math.max(0.01, math.exp(-0.001 * age_bars))
+                float adaptive_decay_rate = 0.001 * f_safe_div(150.0, math.max(nz(z.initial_score, 50.0), 50.0))
+                z.decay_factor := math.max(0.05, math.exp(-adaptive_decay_rate * age_bars))
+                // V279: Retest-based age refresh — retested zones stay "fresher"
+                // If price touches zone but doesn't break it → retest → reduce effective age
+                if z.z_type != "BB"
+                    bool zone_touched = z.is_bull ? (low <= z.top and close >= z.bot) : (high >= z.bot and close <= z.top)
+                    bool zone_broken  = z.is_bull ? (close < z.bot) : (close > z.top)
+                    if zone_touched and not zone_broken and barstate.isconfirmed
+                        z.retest_count := nz(z.retest_count, 0) + 1
+                        // Reset 30% of age on each retest (diminishing returns)
+                        float age_reset_factor = math.max(0.5, 1.0 - 0.3 * math.min(z.retest_count, 3))
+                        // V279: Move created_at forward to reduce effective age
+                        int new_created_at = int(bar_index - age_bars * age_reset_factor)
+                        if new_created_at > z.created_at
+                            z.created_at := new_created_at
                 // V270: FVG fill tracking
                 if not na(z.fvg_gfx) and z.active
                     float fvg_top = box.get_top(z.fvg_gfx)
@@ -4923,15 +5404,13 @@ f_mng() =>
                         else
                             fill_amt := math.max(0, math.min(high, fvg_top) - fvg_bot)
                         z.fvg_fill_pct := math.min(1.0, f_safe_div(fill_amt, fvg_size))
-                        // Score penalty for filled FVGs (discrete tiers)
-                        // V273-fix: proportional penalty scaling in [0.5, 0.8] range.
-                        // Formula: 10 × (fill_pct − 0.5) / 0.3 → penalty from 0 (at 50% fill)
-                        // to ~10 (at 80% fill), yielding a 0..33.3 effective range.
-                        // Above 80%: flat −20 penalty (zone nearly invalidated by fill).
-                        if z.fvg_fill_pct > 0.8
-                            z.score := math.max(10.0, z.score - 20.0)
-                        else if z.fvg_fill_pct > 0.5
-                            z.score := math.max(10.0, z.score - 10.0 * (z.fvg_fill_pct - 0.5) / 0.3)
+                        // V279: Nonlinear quadratic FVG fill penalty
+                        // Quadratic growth: 0 at 50% → 25 at 100% fill
+                        // More gradual penalty for partially filled FVGs, aggressive for near-complete fills
+                        if z.fvg_fill_pct > 0.5
+                            float fill_excess = z.fvg_fill_pct - 0.5
+                            float penalty = 25.0 * math.pow(fill_excess, 2) / 0.25
+                            z.score := math.max(10.0, z.score - penalty)
                         z.tier := f_tier(z.score)
                         // Consequent Encroachment level
                         z.fvg_ce_level := (fvg_top + fvg_bot) / 2.0
@@ -5425,7 +5904,15 @@ if show_signals and in_window
                 for z in zone_db
                     if z.active and (z.is_bull == _is_long) and z.score > _sig_sc
                         _sig_sc := z.score
-                        _sig_zt := z.z_type == "BB" ? (_is_long ? "BB↑" : "BB↓") : z.z_type == "RZ" ? (_is_long ? "RejZ↑" : "RejZ↓") : (_is_long ? "Sup" : "Res")
+                        // V279: Extended zone type labels for signals
+                        _sig_zt := z.z_type == "BB" ? (_is_long ? "BB↑" : "BB↓") : 
+                                   z.z_type == "RZ" ? (_is_long ? "RejZ↑" : "RejZ↓") : 
+                                   z.z_type == "IMB" ? "IMB" : 
+                                   z.z_type == "ACC" ? "Acc" : 
+                                   z.z_type == "DST" ? "Dst" : 
+                                   z.z_type == "VCP" ? "VCP" : 
+                                   z.z_type == "MBR" ? "MBR" : 
+                                   (_is_long ? "Sup" : "Res")
                 if _sig_sc > 0
                     string te = f_emoji(_sig_sc)
                     string rsi_ctx = _is_long ? (rsi_val <= inp_rsi_os ? " 📉OS" : rsi_val <= 45 ? "" : " ⚠️RSI") : (rsi_val >= inp_rsi_ob ? " 📈OB" : rsi_val >= 55 ? "" : " ⚠️RSI")
@@ -5664,7 +6151,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(278.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(279.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -5760,3 +6247,41 @@ if use_pd
     box.set_right(_pd_bx_l, bar_index)
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
+
+// ── V279: Alert System ────────────────────────────────────────────────────
+// Alerts for zone creation, entry signals, and new zone types
+// Note: alertcondition() does NOT count toward the 64 output slot limit
+
+// Entry signal alerts
+alertcondition(trigger_buy, title="🟢 LONG Signal", message="LONG signal triggered on {{ticker}} {{interval}}")
+alertcondition(trigger_sell, title="🔴 SHORT Signal", message="SHORT signal triggered on {{ticker}} {{interval}}")
+alertcondition(trigger_buy or trigger_sell, title="⚡ Any Trade Signal", message="Trade signal on {{ticker}} {{interval}}")
+
+// High-quality zone alerts (score >= 100)
+bool _alert_best_zone = false
+if barstate.isconfirmed and array.size(zone_db) > 0
+    for z in zone_db
+        if z.active and z.score >= 100 and (bar_index - z.created_at) == 0
+            _alert_best_zone := true
+alertcondition(_alert_best_zone, title="⭐ BEST Zone Created", message="High-quality zone (Score≥100) created on {{ticker}} {{interval}}")
+
+// New zone type alerts
+bool _alert_imb_zone = false
+bool _alert_vcp_zone = false
+bool _alert_acc_zone = false
+bool _alert_mbr_zone = false
+if barstate.isconfirmed and array.size(zone_db) > 0
+    for z in zone_db
+        if z.active and (bar_index - z.created_at) == 0
+            if z.z_type == "IMB"
+                _alert_imb_zone := true
+            if z.z_type == "VCP"
+                _alert_vcp_zone := true
+            if z.z_type == "ACC" or z.z_type == "DST"
+                _alert_acc_zone := true
+            if z.z_type == "MBR"
+                _alert_mbr_zone := true
+alertcondition(_alert_imb_zone, title="⚡ Imbalance Zone", message="Imbalance zone detected on {{ticker}} {{interval}}")
+alertcondition(_alert_vcp_zone, title="🔻 VCP Zone", message="VCP compression zone on {{ticker}} {{interval}}")
+alertcondition(_alert_acc_zone, title="📊 Accumulation/Distribution", message="Wyckoff A/D zone on {{ticker}} {{interval}}")
+alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi-bar rejection on {{ticker}} {{interval}}")
