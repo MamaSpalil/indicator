@@ -5393,8 +5393,8 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // ⚠️ ЛИМИТ TradingView: indicator() допускает МАКСИМУМ 64 output-слота.
 //    В output-слоты считаются: plot(), plotshape(), plotchar(), plotarrow(),
 //    plotbar(), plotcandle(), bgcolor(), barcolor(), fill().
-//    Текущее использование: 64 / 64 (ENG: каналы + VWAP visible plot).
-//    При добавлении новых plot()-каналов — необходимо удалить или объединить существующие!
+//    Текущее использование: 55 / 64 (ENG: каналы + VWAP visible plot).
+//    V280: 9 auto-tuner каналов (Pivot L/R, OB Len, Cluster Tol, Inv Dist) перенесены в VISUAL.
 // ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
 // При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
@@ -5431,15 +5431,8 @@ plot(nz(safe_pv, 1.0),                  "ENG: Safe PV",      color=color.new(#00
 plot(nz(vol_ratio_c, 1.0),              "ENG: Vol Ratio",    color=color.new(#000000, 100))
 plot(nz(htf_vol_ctx_c, 1.0),            "ENG: HTF Vol",      color=color.new(#000000, 100))
 plot(nz(float(p_max_history), 500.0),   "ENG: Max Hist",     color=color.new(#000000, 100))
-plot(nz(float(p_pivot_left), 5.0),      "ENG: Pivot L Sup",  color=color.new(#000000, 100))
-plot(nz(float(p_pivot_right), 2.0),     "ENG: Pivot R Sup",  color=color.new(#000000, 100))
-plot(nz(float(p_pivot_left_res), 5.0),  "ENG: Pivot L Res",  color=color.new(#000000, 100))
-plot(nz(float(p_pivot_right_res), 2.0), "ENG: Pivot R Res",  color=color.new(#000000, 100))
-plot(nz(float(p_ob_len), 1.0),          "ENG: OB Len Sup",   color=color.new(#000000, 100))
-plot(nz(float(p_ob_len_res), 1.0),      "ENG: OB Len Res",   color=color.new(#000000, 100))
-plot(nz(p_cluster_tol, 0.5),            "ENG: Cluster Tol",  color=color.new(#000000, 100))
-plot(nz(p_inv_dist, 4900.0),            "ENG: Inv Dist Sup", color=color.new(#000000, 100))
-plot(nz(p_inv_dist_res, 4900.0),        "ENG: Inv Dist Res", color=color.new(#000000, 100))
+// V280: Pivot L/R Sup/Res, OB Len Sup/Res, Cluster Tol, Inv Dist Sup/Res moved to VISUAL (use local fallback)
+// Freed 9 plot slots for future use
 plot(nz(p_fvg_min, 0.0001),             "ENG: FVG Min",      color=color.new(#000000, 100))
 plot(nz(p_fvg_max, 6.0),                "ENG: FVG Max",      color=color.new(#000000, 100))
 plot(nz(float(min_confluence), 2.0),    "ENG: Confluence",   color=color.new(#000000, 100))

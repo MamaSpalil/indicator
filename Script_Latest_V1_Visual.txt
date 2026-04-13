@@ -194,15 +194,7 @@ eng_safe_pv      = input.source(close, "VIS: Safe PV",      tooltip="→ ENG: Sa
 eng_vol_ratio    = input.source(close, "VIS: Vol Ratio",    tooltip="→ ENG: Vol Ratio | Диапазон: 0.3-3.0. ATR/ATR_slow волатильность", group=group_eng)
 eng_htf_vol      = input.source(close, "VIS: HTF Vol",      tooltip="→ ENG: HTF Vol | Диапазон: 0.5-3.0. HTF волатильность контекст", group=group_eng)
 eng_max_hist     = input.source(close, "VIS: Max Hist",     tooltip="→ ENG: Max Hist | Диапазон: 500-4999. Глубина истории в барах", group=group_eng)
-eng_pivot_l_sup  = input.source(close, "VIS: Pivot L Sup",  tooltip="→ ENG: Pivot L Sup | Диапазон: 1-4999. Левое плечо пивота поддержки", group=group_eng)
-eng_pivot_r_sup  = input.source(close, "VIS: Pivot R Sup",  tooltip="→ ENG: Pivot R Sup | Диапазон: 1-4999. Правое плечо пивота поддержки", group=group_eng)
-eng_pivot_l_res  = input.source(close, "VIS: Pivot L Res",  tooltip="→ ENG: Pivot L Res | Диапазон: 1-4999. Левое плечо пивота сопротивления", group=group_eng)
-eng_pivot_r_res  = input.source(close, "VIS: Pivot R Res",  tooltip="→ ENG: Pivot R Res | Диапазон: 1-4999. Правое плечо пивота сопротивления", group=group_eng)
-eng_ob_len_sup   = input.source(close, "VIS: OB Len Sup",   tooltip="→ ENG: OB Len Sup | Диапазон: 1-20. Cluster size для поддержки", group=group_eng)
-eng_ob_len_res   = input.source(close, "VIS: OB Len Res",   tooltip="→ ENG: OB Len Res | Диапазон: 1-20. Cluster size для сопротивления", group=group_eng)
-eng_cluster_tol  = input.source(close, "VIS: Cluster Tol",  tooltip="→ ENG: Cluster Tol | Диапазон: 0.1-5.0 (×ATR). Noise tolerance", group=group_eng)
-eng_inv_dist_sup = input.source(close, "VIS: Inv Dist Sup", tooltip="→ ENG: Inv Dist Sup | Расстояние инвалидации Support (ATR)", group=group_eng)
-eng_inv_dist_res = input.source(close, "VIS: Inv Dist Res", tooltip="→ ENG: Inv Dist Res | Расстояние инвалидации Resistance (ATR)", group=group_eng)
+// V280: Pivot L/R Sup/Res, OB Len Sup/Res, Cluster Tol, Inv Dist Sup/Res — removed from ENGINE, using local fallback
 eng_fvg_min      = input.source(close, "VIS: FVG Min",      tooltip="→ ENG: FVG Min | Диапазон: 0.0001-5.0 (×ATR). Минимальный FVG", group=group_eng)
 eng_fvg_max      = input.source(close, "VIS: FVG Max",      tooltip="→ ENG: FVG Max | Диапазон: 0.5-20.0 (×ATR). Максимальный FVG", group=group_eng)
 eng_confluence   = input.source(close, "VIS: Confluence",   tooltip="→ ENG: Confluence | Диапазон: 1-10. Мин. факторов для входа", group=group_eng)
@@ -275,15 +267,16 @@ float v_safe_pv      = use_engine_data ? eng_safe_pv      : src_safe_pv
 float v_vol_ratio    = use_engine_data ? eng_vol_ratio    : src_vol_ratio
 float v_htf_vol      = use_engine_data ? eng_htf_vol      : src_htf_vol
 float v_max_hist     = use_engine_data ? eng_max_hist     : src_max_hist
-float v_piv_l_sup    = use_engine_data ? eng_pivot_l_sup  : src_pivot_l_sup
-float v_piv_r_sup    = use_engine_data ? eng_pivot_r_sup  : src_pivot_r_sup
-float v_piv_l_res    = use_engine_data ? eng_pivot_l_res  : src_pivot_l_res
-float v_piv_r_res    = use_engine_data ? eng_pivot_r_res  : src_pivot_r_res
-float v_ob_len_sup   = use_engine_data ? eng_ob_len_sup   : src_ob_len_sup
-float v_ob_len_res   = use_engine_data ? eng_ob_len_res   : src_ob_len_res
-float v_cluster_tol  = use_engine_data ? eng_cluster_tol  : src_cluster_tol
-float v_inv_dist_sup = use_engine_data ? eng_inv_dist_sup : src_inv_dist_sup
-float v_inv_dist_res = use_engine_data ? eng_inv_dist_res : src_inv_dist_res
+// V280: auto-tuner params removed from ENGINE — always use local fallback
+float v_piv_l_sup    = src_pivot_l_sup
+float v_piv_r_sup    = src_pivot_r_sup
+float v_piv_l_res    = src_pivot_l_res
+float v_piv_r_res    = src_pivot_r_res
+float v_ob_len_sup   = src_ob_len_sup
+float v_ob_len_res   = src_ob_len_res
+float v_cluster_tol  = src_cluster_tol
+float v_inv_dist_sup = src_inv_dist_sup
+float v_inv_dist_res = src_inv_dist_res
 float v_fvg_min      = use_engine_data ? eng_fvg_min      : src_fvg_min
 float v_fvg_max      = use_engine_data ? eng_fvg_max      : src_fvg_max
 float v_min_confl    = use_engine_data ? eng_confluence    : src_confluence
