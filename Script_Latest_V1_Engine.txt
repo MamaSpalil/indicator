@@ -346,10 +346,10 @@ use_multi_rej   = input.bool(true,  "Multi-Bar Rejection (multi-wick)",      gro
 inp_multi_rej_min = input.int(3, "MBR: Мин. свечей с отторжением", minval=2, maxval=6, group=group_new_zones)
 use_rz     = input.bool(true, "Показывать Rejection Zones (RZ)", group=group_vis)
 inp_rz_wick_mult = input.float(1.5, "Мин. хвост RZ (× тело свечи)", minval=1.0, maxval=6.0, step=0.1, group=group_vis)
-zone_transp_best   = input.int(65, "Заливка BEST (% прозрачности)",   minval=30, maxval=95, group=group_vis)
-zone_transp_strong = input.int(74, "Заливка STRONG (% прозрачности)", minval=30, maxval=95, group=group_vis)
-zone_transp_normal = input.int(82, "Заливка NORMAL (% прозрачности)", minval=40, maxval=95, group=group_vis)
-zone_transp_pivot  = input.int(89, "Заливка PIVOT (% прозрачности)",  minval=50, maxval=97, group=group_vis)
+zone_transp_best   = input.int(50, "Заливка BEST (% прозрачности)",   minval=30, maxval=95, group=group_vis)
+zone_transp_strong = input.int(60, "Заливка STRONG (% прозрачности)", minval=30, maxval=95, group=group_vis)
+zone_transp_normal = input.int(72, "Заливка NORMAL (% прозрачности)", minval=40, maxval=95, group=group_vis)
+zone_transp_pivot  = input.int(80, "Заливка PIVOT (% прозрачности)",  minval=50, maxval=97, group=group_vis)
 
 // ── НОВОЕ V249: Визуальные опции для зон ──────────────────────────────────
 group_vis2  = "🎨 Zone Visual Enhancements"
@@ -872,7 +872,7 @@ if tuning_mode == "Auto-Adaptive"
     var array<int>   TF_CL_MAX  = array.from(12,  12,   8,    8,    8)    // cluster limit
     var array<float> TF_SUP_PL  = array.from(5.0,  6.0,  12.0, 24.0, 31.0) // support pivot left base
     var array<float> TF_SUP_PR  = array.from(3.0,  3.0,  3.0,  2.0,  2.0)  // support pivot right base
-    var array<float> TF_RES_PL  = array.from(60.0, 18.0, 5.0,  5.0,  5.0)  // resistance pivot left base
+    var array<float> TF_RES_PL  = array.from(15.0, 12.0, 5.0,  5.0,  5.0)  // resistance pivot left base (V281: rebalanced MICRO/SCALP for more zones)
     var array<float> TF_RES_PR  = array.from(6.0,  3.0,  3.0,  2.0,  2.0)  // resistance pivot right base
 
     // ── Dynamic Cluster Sizes (via lookup) ───────────────────────────────
@@ -1376,6 +1376,8 @@ type Zone
     // V279: Adaptive decay fields
     float        initial_score     // Score at zone creation (for adaptive decay rate)
     int          retest_count      // Number of successful retests (for age reset)
+    // V281: Side-stripe line for support/resistance visual distinction
+    line         side_stripe       // Colored stripe: bottom for support (green), top for resistance (red)
 
 var array<Zone> zone_db = array.new<Zone>()
 
@@ -1417,28 +1419,33 @@ f_get_zone_colors(float score, bool bull, string z_type) =>
 // ── V249: Вспомогательные функции визуализации ────────────────────────────
 
 // Glow-эффект: яркая линия чуть выше/ниже рамки зоны
+// V281: Lowered threshold from 100 to 70 so STRONG zones also get glow for better visibility
 f_update_glow(Zone z, color bd_col) =>
-    if use_glow_best and z.score >= 100 and z.active
-        // Glow = линия на 30% прозрачности, толщина 3, на 1 тик выше/ниже рамки
-        color glow_col = color.new(color.rgb(color.r(bd_col), color.g(bd_col), color.b(bd_col)), 30)
+    if use_glow_best and z.score >= 70 and z.active
+        // Glow = линия на 30% прозрачности для BEST, 50% для STRONG — на 1 тик выше/ниже рамки
+        int glow_alpha = z.score >= 100 ? 30 : 50
+        color glow_col = color.new(color.rgb(color.r(bd_col), color.g(bd_col), color.b(bd_col)), glow_alpha)
+        int glow_width = z.score >= 100 ? 3 : 2
         float glow_offset = syminfo.mintick * 3
         if na(z.glow_line_top)
-            z.glow_line_top := line.new(math.max(z.created_at, bar_index - 25), z.top + glow_offset, bar_index + 5, z.top + glow_offset, color=glow_col, width=3, style=line.style_solid, xloc=xloc.bar_index)
+            z.glow_line_top := line.new(math.max(z.created_at, bar_index - 25), z.top + glow_offset, bar_index + 5, z.top + glow_offset, color=glow_col, width=glow_width, style=line.style_solid, xloc=xloc.bar_index)
         else
             line.set_xy1(z.glow_line_top, math.max(z.created_at, bar_index - 25), z.top + glow_offset)
             line.set_xy2(z.glow_line_top, bar_index + 5, z.top + glow_offset)
             line.set_color(z.glow_line_top, glow_col)
+            line.set_width(z.glow_line_top, glow_width)
             z.glow_line_top
 
         if na(z.glow_line_bot)
-            z.glow_line_bot := line.new(math.max(z.created_at, bar_index - 25), z.bot - glow_offset, bar_index + 5, z.bot - glow_offset, color=glow_col, width=3, style=line.style_solid, xloc=xloc.bar_index)
+            z.glow_line_bot := line.new(math.max(z.created_at, bar_index - 25), z.bot - glow_offset, bar_index + 5, z.bot - glow_offset, color=glow_col, width=glow_width, style=line.style_solid, xloc=xloc.bar_index)
         else
             line.set_xy1(z.glow_line_bot, math.max(z.created_at, bar_index - 25), z.bot - glow_offset)
             line.set_xy2(z.glow_line_bot, bar_index + 5, z.bot - glow_offset)
             line.set_color(z.glow_line_bot, glow_col)
+            line.set_width(z.glow_line_bot, glow_width)
             z.glow_line_bot
     else
-        // Удаляем glow если Score упал ниже BEST
+        // Удаляем glow если Score упал ниже порога
         if not na(z.glow_line_top)
             line.delete(z.glow_line_top)
             z.glow_line_top := na
@@ -1559,6 +1566,31 @@ f_update_rz_zigzag(Zone z) =>
             while array.size(z.rz_zigzag_lines) > 0
                 line.delete(array.pop(z.rz_zigzag_lines))
 
+// V281: Side-stripe — thick colored line at key edge of OB zone for instant support/resistance recognition
+// Support zones: bright green stripe at the bottom boundary (price approaches from above)
+// Resistance zones: bright red stripe at the top boundary (price approaches from below)
+f_update_side_stripe(Zone z, color bd_col) =>
+    if z.active and (z.z_type == "OB" or z.z_type == "BB")
+        // Stripe at the price-facing edge: bottom for support (bull), top for resistance (bear)
+        float stripe_y = z.is_bull ? z.bot : z.top
+        int stripe_alpha = z.score >= 100 ? 10 : z.score >= 70 ? 25 : 40
+        color stripe_col = color.new(color.rgb(color.r(bd_col), color.g(bd_col), color.b(bd_col)), stripe_alpha)
+        int stripe_width = z.score >= 100 ? 4 : z.score >= 70 ? 3 : 2
+        int x1 = math.max(z.created_at, bar_index - 25)
+        int x2 = bar_index + 5
+        if na(z.side_stripe)
+            z.side_stripe := line.new(x1, stripe_y, x2, stripe_y, color=stripe_col, width=stripe_width, style=line.style_solid, xloc=xloc.bar_index)
+        else
+            line.set_xy1(z.side_stripe, x1, stripe_y)
+            line.set_xy2(z.side_stripe, x2, stripe_y)
+            line.set_color(z.side_stripe, stripe_col)
+            line.set_width(z.side_stripe, stripe_width)
+            z.side_stripe
+    else
+        if not na(z.side_stripe)
+            line.delete(z.side_stripe)
+            z.side_stripe := na
+
 // ── Полное удаление визуальных элементов зоны (V249) ──────────────────────
 f_delete_zone_visuals(Zone z) =>
     if not na(z.glow_line_top)
@@ -1579,6 +1611,9 @@ f_delete_zone_visuals(Zone z) =>
     if not na(z.rz_zigzag_lines)
         while array.size(z.rz_zigzag_lines) > 0
             line.delete(array.pop(z.rz_zigzag_lines))
+    if not na(z.side_stripe)
+        line.delete(z.side_stripe)
+        z.side_stripe := na
 
 method draw_grid(Zone this, array<line> lines_arr, array<label> lbls_arr, float t, float b, int x_start) =>
     float h = math.abs(t - b)
@@ -1710,9 +1745,9 @@ method update(Zone this) =>
             int zone_age = bar_index - this.created_at
             if zone_max_age > 0 and zone_age > 0
                 float fade_factor  = math.min(float(zone_age) / float(zone_max_age), 1.0)
-                int   extra_transp = math.round(fade_factor * 22)
+                int   extra_transp = math.round(fade_factor * 15)
                 int   base_t       = int(color.t(c_bg_z))
-                int   new_t        = math.min(97, base_t + extra_transp)
+                int   new_t        = math.min(92, base_t + extra_transp)
                 c_bg_z := color.new(color.rgb(color.r(c_bg_z), color.g(c_bg_z), color.b(c_bg_z)), new_t)
 
         string idm_txt    = this.idm_swept ? " [IDM✓]" : ""
@@ -1734,7 +1769,7 @@ method update(Zone this) =>
         box.set_border_color(this.gfx, c_bd_z)
         box.set_bgcolor(this.gfx, c_bg_z)
         box.set_border_style(this.gfx, stl)
-        box.set_border_width(this.gfx, this.z_type == "BB" ? 2 : this.z_type == "RZ" ? 1 : 1)
+        box.set_border_width(this.gfx, this.z_type == "BB" ? 2 : (this.z_type == "RZ" or this.z_type == "MBR") ? 1 : 2)
         box.set_text(this.gfx, lbl_txt)
         box.set_text_color(this.gfx, c_bd_z)
         box.set_text_halign(this.gfx, text.align_right)
@@ -1747,6 +1782,7 @@ method update(Zone this) =>
         f_update_bb_arrow(this)
         f_update_fvg_connector(this)
         f_update_rz_zigzag(this)
+        f_update_side_stripe(this, c_bd_z)
 
         // Debug label
         bool should_show_debug = debug_mode and not this.debug_shown and this.debug_log != "" and this.score > 60
@@ -4082,7 +4118,8 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         mb_stage=0, bb_age_bars=0.0, bb_cascade_count=0, fvg_fill_pct=0.0,
         fvg_ce_level=na, kill_zone_bonus=0.0, confluence_bonus=0.0, decay_factor=1.0,
         regime_at_creation=0, inst_footprint=0.0,
-        initial_score=sc, retest_count=0)
+        initial_score=sc, retest_count=0,
+        side_stripe=na)
     n
 
 f_create_new_zones() =>
