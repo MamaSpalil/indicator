@@ -2863,6 +2863,10 @@ f_rsi_divergence_rz(bool is_bull, float rsi_now, float rsi_prev, float price_now
                 bonus := 15.0
     [has_div, bonus]
 
+// V279-fix: Forward-declare globals used inside functions below
+var int _regime_type = 0
+float _hurst_val = f_hurst_exponent(100)
+
 // V273: Confluence Score — checks alignment with key levels
 f_calc_confluence_score(float zone_mid, float swing_h, float swing_l, float vwap, float prev_d_high, float prev_d_low, float prev_d_close) =>
     float confluence = 0.0
@@ -4780,9 +4784,6 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         initial_score=sc, retest_count=0)
     n
 
-// V270: Regime type — declared before f_create_new_zones for scope access
-var int _regime_type = 0
-
 f_create_new_zones() =>
     // V250: локальные series-ссылки с max_bars_back для безопасного доступа к истории
     float _mem_atr  = atr_val
@@ -6057,7 +6058,7 @@ if not na(ph_int)
 float cvd_div_signal = cvd_bull_div ? 1.0 : cvd_bear_div ? -1.0 : 0.0
 
 // V270: Hurst Exponent computation
-float _hurst_val = f_hurst_exponent(100)
+_hurst_val := f_hurst_exponent(100)
 
 // V270: VSA signal
 int _vsa_signal = f_vsa_signal()
