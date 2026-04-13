@@ -253,6 +253,10 @@ w_isolation   = input.int(25, "Вес: Изоляция (Clean)",       minval=0
 w_fractal     = input.int(50, "Вес: Фрактальная глубина",    minval=0, maxval=100, group=group_smart)
 inp_wick_rat  = input.float(2.0,"Мин. соотношение Тень/Тело",  minval=0.1, step=0.1, group=group_smart)
 inp_cluster_tol = input.float(1.0,"Допуск кластеризации (ATR)", minval=0.1, maxval=1.0, step=0.1, group=group_smart)
+// V279: Noise tolerance — число допустимых «шумовых» свечей внутри кластера
+inp_noise_tolerance = input.int(1, "Допуск шума кластера (свечей)", minval=0, maxval=2, step=1, tooltip="Количество допустимых свечей противоположного цвета внутри кластера. 0=строгий, 1=допуск 1 шумовой, 2=мягкий.", group=group_smart)
+// V279: Доминирование направления — минимальная доля свечей нужного цвета в кластере (>70%)
+inp_cluster_dominance = input.float(0.70, "Мин. доминирование направления (%)", minval=0.5, maxval=0.95, step=0.05, tooltip="Минимальная доля свечей нужного цвета в кластере для валидации.", group=group_smart)
 // V266: Нижняя тень (Lower Shadow) — фильтрация пивотов по длине нижней/верхней тени
 use_shadow_filter      = input.bool(true,  "Фильтр нижней тени (Lower Shadow)", tooltip="Для Support: требует минимальную нижнюю тень. Для Resistance: минимальную верхнюю тень.", group=group_smart)
 inp_lower_shadow_min   = input.float(0.10, "Мин. нижняя тень / диапазон (Support)",  minval=0.05, maxval=0.9, step=0.05, tooltip="Минимальная доля нижней тени от полного диапазона свечи для пивотов поддержки.", group=group_smart)
@@ -2013,6 +2017,9 @@ type Zone
     float        decay_factor      // Exponential decay factor
     int          regime_at_creation // Regime at zone creation: 0=trending_up, 1=trending_down, 2=ranging, 3=volatile
     float        inst_footprint    // Institutional footprint score
+    // V279: Adaptive decay fields
+    float        initial_score     // Score at zone creation (for adaptive decay rate)
+    int          retest_count      // Number of successful retests (for age reset)
 
 var array<Zone> zone_db = array.new<Zone>()
 
@@ -3616,9 +3623,18 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
         float cluster_h  = -1.0e9
         float cluster_l  = 1.0e9
         int search_depth = math.max(15, TARGET_BARS * 10)
-        float noise_tol  = math.max(syminfo.mintick, hist_atr * p_cluster_tol)
+        // V279: Adaptive tolerance — higher volume widens tolerance for more significant zones
+        float vol_ratio_local = nz(rvol, 1.0)
+        float adaptive_tol_mult = 1.0 + math.min(vol_ratio_local, 3.0) / 3.0
+        float noise_tol  = math.max(syminfo.mintick, hist_atr * p_cluster_tol * adaptive_tol_mult)
         float cluster_vol_bonus = 0.0
         int candles_found = 0
+        // V279: Soft cluster — noise counting and volume-weighted boundaries
+        int noise_count  = 0
+        int correct_count = 0
+        float vwap_h_sum = 0.0  // volume-weighted high accumulator
+        float vwap_l_sum = 0.0  // volume-weighted low accumulator
+        float vwap_vol_sum = 0.0  // total volume for VWAP weighting
         int safe_hist_off = math.min(p_max_history - b_off - 1, bar_index - b_off - 1)
         int max_search    = math.min(search_depth, math.max(0, safe_hist_off))
         // V249: жёсткий потолок
@@ -3639,46 +3655,106 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
             bool is_green = (c > o)
             bool is_doji  = (c == o)
             float loc_rvol = not na(_mem_rvol[safe_k]) ? _mem_rvol[safe_k] : 1.0
+            float loc_vol  = nz(volume[safe_k], 1.0)
 
             if is_bull
                 if k == 0
                     cluster_h := h
                     cluster_l := l
                     candles_found += 1
+                    correct_count += 1
                     cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                    // V279: Volume-weighted boundaries
+                    vwap_h_sum += h * loc_vol
+                    vwap_l_sum += l * loc_vol
+                    vwap_vol_sum += loc_vol
                 else
                     if is_red or is_doji
                         cluster_h := math.max(cluster_h, h)
                         cluster_l := math.min(cluster_l, l)
                         candles_found += 1
+                        correct_count += 1
                         cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                        vwap_h_sum += h * loc_vol
+                        vwap_l_sum += l * loc_vol
+                        vwap_vol_sum += loc_vol
                     else if is_green
-                        if l < (cluster_l - noise_tol)
-                            break
+                        // V279: Soft cluster — allow noise candles up to inp_noise_tolerance
+                        if noise_count >= inp_noise_tolerance
+                            if l < (cluster_l - noise_tol)
+                                break
+                            else
+                                // V279: Check dominance ratio before stopping
+                                float dominance = candles_found > 0 ? float(correct_count) / float(candles_found + 1) : 0.0
+                                if dominance < inp_cluster_dominance
+                                    break
+                                cluster_h := math.max(cluster_h, h)
                         else
+                            noise_count += 1
+                            candles_found += 1
                             cluster_h := math.max(cluster_h, h)
+                            cluster_l := math.min(cluster_l, l)
+                            // V279: Noise candles get reduced volume weight
+                            vwap_h_sum += h * loc_vol * 0.5
+                            vwap_l_sum += l * loc_vol * 0.5
+                            vwap_vol_sum += loc_vol * 0.5
             else
                 if k == 0
                     cluster_h := h
                     cluster_l := l
                     candles_found += 1
+                    correct_count += 1
                     cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                    vwap_h_sum += h * loc_vol
+                    vwap_l_sum += l * loc_vol
+                    vwap_vol_sum += loc_vol
                 else
                     if is_green or is_doji
                         cluster_h := math.max(cluster_h, h)
                         cluster_l := math.min(cluster_l, l)
                         candles_found += 1
+                        correct_count += 1
                         cluster_vol_bonus += (loc_rvol > 1.0 ? loc_rvol * 3.0 : 0.0)
+                        vwap_h_sum += h * loc_vol
+                        vwap_l_sum += l * loc_vol
+                        vwap_vol_sum += loc_vol
                     else if is_red
-                        if h > (cluster_h + noise_tol)
-                            break
+                        // V279: Soft cluster — allow noise candles up to inp_noise_tolerance
+                        if noise_count >= inp_noise_tolerance
+                            if h > (cluster_h + noise_tol)
+                                break
+                            else
+                                float dominance = candles_found > 0 ? float(correct_count) / float(candles_found + 1) : 0.0
+                                if dominance < inp_cluster_dominance
+                                    break
+                                cluster_l := math.min(cluster_l, l)
                         else
+                            noise_count += 1
+                            candles_found += 1
+                            cluster_h := math.max(cluster_h, h)
                             cluster_l := math.min(cluster_l, l)
+                            vwap_h_sum += h * loc_vol * 0.5
+                            vwap_l_sum += l * loc_vol * 0.5
+                            vwap_vol_sum += loc_vol * 0.5
 
         if candles_found == 0
             int safe_b = f_clamp(b_off, MAX_OFFSET)
             cluster_h := high[safe_b]
             cluster_l := low[safe_b]
+
+        // V279: Volume-weighted boundary refinement
+        // When we have enough volume data, shift boundaries toward volume-weighted levels
+        if vwap_vol_sum > 0 and candles_found >= 2
+            float vw_h = vwap_h_sum / vwap_vol_sum
+            float vw_l = vwap_l_sum / vwap_vol_sum
+            // Blend 30% VWAP + 70% raw extremes for stability
+            cluster_h := cluster_h * 0.7 + vw_h * 0.3
+            cluster_l := cluster_l * 0.7 + vw_l * 0.3
+            // Safety: ensure h >= l
+            if cluster_h < cluster_l
+                float _tmp = cluster_h
+                cluster_h := cluster_l
+                cluster_l := _tmp
 
         float abs_extreme_h   = cluster_h
         float abs_extreme_l   = cluster_l
@@ -4413,7 +4489,8 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         refined_top=na, refined_bot=na, is_propulsion=false, is_mitigation=false,
         mb_stage=0, bb_age_bars=0.0, bb_cascade_count=0, fvg_fill_pct=0.0,
         fvg_ce_level=na, kill_zone_bonus=0.0, confluence_bonus=0.0, decay_factor=1.0,
-        regime_at_creation=0, inst_footprint=0.0)
+        regime_at_creation=0, inst_footprint=0.0,
+        initial_score=sc, retest_count=0)
     n
 
 // V270: Regime type — declared before f_create_new_zones for scope access
@@ -4753,9 +4830,10 @@ f_create_new_zones() =>
                     rz_score := _tmp_rz_score
                     // V270: Adaptive RZ threshold — longer wick = lower threshold
                     float rz_adapt_thresh = float(p_min_score) * (0.4 + 0.2 * f_safe_div(rz_wick_ratio, 1.0))
-                    // V270: Quadratic wick ratio scoring
-                    float wick_sq_bonus = math.pow(math.min(rz_wick_ratio, 3.0), 2) * 20.0
-                    rz_score += math.min(20.0, wick_sq_bonus)
+                    // V279: Sigmoid wick ratio scoring (replaces quadratic)
+                    // Smooth saturation at ~30 for wick_ratio > 3, hard cap 35
+                    float wick_sig_bonus = 30.0 / (1.0 + math.exp(-3.0 * (rz_wick_ratio - 2.0)))
+                    rz_score += math.min(35.0, wick_sig_bonus)
                     // V273: RSI divergence bonus for RZ Bull
                     float _rz_rsi_prev_b = nz(_mem_rsi[f_clamp(rz_safe_b + 5, MAX_OFFSET)], 50.0)
                     float _rz_price_prev_b = nz(low[f_clamp(rz_safe_b + 5, MAX_OFFSET)], low)
@@ -4827,9 +4905,9 @@ f_create_new_zones() =>
                     rz_score_s := _tmp_rz_score_s
                     // V270: Adaptive RZ threshold — longer wick = lower threshold
                     float rz_adapt_thresh_s = float(p_min_score) * (0.4 + 0.2 * f_safe_div(rz_wick_ratio_s, 1.0))
-                    // V270: Quadratic wick ratio scoring
-                    float wick_sq_bonus_s = math.pow(math.min(rz_wick_ratio_s, 3.0), 2) * 20.0
-                    rz_score_s += math.min(20.0, wick_sq_bonus_s)
+                    // V279: Sigmoid wick ratio scoring (replaces quadratic)
+                    float wick_sig_bonus_s = 30.0 / (1.0 + math.exp(-3.0 * (rz_wick_ratio_s - 2.0)))
+                    rz_score_s += math.min(35.0, wick_sig_bonus_s)
                     // V273: RSI divergence bonus for RZ Bear
                     float _rz_rsi_prev_s = nz(_mem_rsi[f_clamp(rz_safe_s + 5, MAX_OFFSET)], 50.0)
                     float _rz_price_prev_s = nz(high[f_clamp(rz_safe_s + 5, MAX_OFFSET)], high)
@@ -4907,10 +4985,23 @@ f_mng() =>
                         z.is_mitigation := true
                         z.score := math.min(z.score + 20.0, 150.0)
                         z.tier := f_tier(z.score)
-                // V270: Exponential score decay
-                // V273-fix: floor at 0.01 to prevent numerical underflow for old zones
+                // V279: Adaptive exponential score decay
+                // High-quality zones (initial_score > 100) decay slower
+                // Decay rate: 0.001 × (150 / max(initial_score, 50))
+                // Minimum floor at 0.05 to prevent full score elimination
                 float age_bars = float(bar_index - z.created_at)
-                z.decay_factor := math.max(0.01, math.exp(-0.001 * age_bars))
+                float adaptive_decay_rate = 0.001 * f_safe_div(150.0, math.max(nz(z.initial_score, 50.0), 50.0))
+                z.decay_factor := math.max(0.05, math.exp(-adaptive_decay_rate * age_bars))
+                // V279: Retest-based age refresh — retested zones stay "fresher"
+                // If price touches zone but doesn't break it → retest → reduce effective age
+                if z.z_type != "BB"
+                    bool zone_touched = z.is_bull ? (low <= z.top and close >= z.bot) : (high >= z.bot and close <= z.top)
+                    bool zone_broken  = z.is_bull ? (close < z.bot) : (close > z.top)
+                    if zone_touched and not zone_broken and barstate.isconfirmed
+                        z.retest_count := nz(z.retest_count, 0) + 1
+                        // Reset 30% of age on each retest (diminishing returns)
+                        float age_reset_factor = math.max(0.5, 1.0 - 0.3 * math.min(z.retest_count, 3))
+                        z.created_at := math.max(z.created_at, int(bar_index - age_bars * age_reset_factor))
                 // V270: FVG fill tracking
                 if not na(z.fvg_gfx) and z.active
                     float fvg_top = box.get_top(z.fvg_gfx)
@@ -4923,15 +5014,13 @@ f_mng() =>
                         else
                             fill_amt := math.max(0, math.min(high, fvg_top) - fvg_bot)
                         z.fvg_fill_pct := math.min(1.0, f_safe_div(fill_amt, fvg_size))
-                        // Score penalty for filled FVGs (discrete tiers)
-                        // V273-fix: proportional penalty scaling in [0.5, 0.8] range.
-                        // Formula: 10 × (fill_pct − 0.5) / 0.3 → penalty from 0 (at 50% fill)
-                        // to ~10 (at 80% fill), yielding a 0..33.3 effective range.
-                        // Above 80%: flat −20 penalty (zone nearly invalidated by fill).
-                        if z.fvg_fill_pct > 0.8
-                            z.score := math.max(10.0, z.score - 20.0)
-                        else if z.fvg_fill_pct > 0.5
-                            z.score := math.max(10.0, z.score - 10.0 * (z.fvg_fill_pct - 0.5) / 0.3)
+                        // V279: Nonlinear quadratic FVG fill penalty
+                        // Quadratic growth: 0 at 50% → 25 at 100% fill
+                        // More gradual penalty for partially filled FVGs, aggressive for near-complete fills
+                        if z.fvg_fill_pct > 0.5
+                            float fill_excess = z.fvg_fill_pct - 0.5
+                            float penalty = 25.0 * math.pow(fill_excess, 2) / 0.25
+                            z.score := math.max(10.0, z.score - penalty)
                         z.tier := f_tier(z.score)
                         // Consequent Encroachment level
                         z.fvg_ce_level := (fvg_top + fvg_bot) / 2.0
