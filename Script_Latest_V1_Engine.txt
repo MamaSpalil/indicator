@@ -3083,7 +3083,7 @@ var array<float> _nn_w3 = array.new<float>(4, 0.25)    // 4×1 = 4 weights (hidd
 var array<float> _nn_bias1 = array.new<float>(8, 0.0)
 var array<float> _nn_bias2 = array.new<float>(4, 0.0)
 var array<float> _nn_bias3 = array.from(0.0)
-var int _nn_update_count = 0
+var array<int> _nn_update_count = array.from(0)
 float _nn_lambda = 0.001  // L2 regularization coefficient
 
 f_nn_sigmoid(float x) =>
@@ -3117,8 +3117,8 @@ f_nn_predict(float z_in, float vol_in, float trend_in, float sweep_in, float eff
 
 f_nn_update(float z_in, float vol_in, float trend_in, float sweep_in, float eff_in, float pa_in, float target, float lr) =>
     // V279: Adaptive learning rate — decreases over time for stability
-    _nn_update_count := _nn_update_count + 1
-    float adaptive_lr = lr * (1.0 / (1.0 + 0.001 * float(_nn_update_count)))
+    array.set(_nn_update_count, 0, array.get(_nn_update_count, 0) + 1)
+    float adaptive_lr = lr * (1.0 / (1.0 + 0.001 * float(array.get(_nn_update_count, 0))))
     float pred = f_nn_predict(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in)
     float err = (target / 150.0) - (pred / 150.0)
     float regime_in = nz(float(_regime_type), 0.0) / 3.0
@@ -4643,10 +4643,11 @@ f_resolve_zone_conflicts() =>
                 array.remove(zone_db, i)
 
 // V278: Pre-GC zone counts — computed before garbage collection for accurate dashboard display
-var int _pre_gc_cnt_sup = 0
-var int _pre_gc_cnt_res = 0
-var int _pre_gc_cnt_bb  = 0
-var int _pre_gc_cnt_rz  = 0
+// Wrapped in single-element arrays to allow modification inside f_limit_visible_zones() (Pine v6 rule)
+var array<int> _pre_gc_cnt_sup = array.from(0)
+var array<int> _pre_gc_cnt_res = array.from(0)
+var array<int> _pre_gc_cnt_bb  = array.from(0)
+var array<int> _pre_gc_cnt_rz  = array.from(0)
 
 f_limit_visible_zones() =>
     if array.size(zone_db) > 0
@@ -4656,19 +4657,19 @@ f_limit_visible_zones() =>
                 array.push(candidates, z)
 
         // V278: Count ALL active zones by type BEFORE garbage collection
-        _pre_gc_cnt_sup := 0
-        _pre_gc_cnt_res := 0
-        _pre_gc_cnt_bb  := 0
-        _pre_gc_cnt_rz  := 0
+        array.set(_pre_gc_cnt_sup, 0, 0)
+        array.set(_pre_gc_cnt_res, 0, 0)
+        array.set(_pre_gc_cnt_bb,  0, 0)
+        array.set(_pre_gc_cnt_rz,  0, 0)
         for z in candidates
             if z.z_type == "BB"
-                _pre_gc_cnt_bb  += 1
+                array.set(_pre_gc_cnt_bb,  0, array.get(_pre_gc_cnt_bb,  0) + 1)
             else if z.z_type == "RZ"
-                _pre_gc_cnt_rz  += 1
+                array.set(_pre_gc_cnt_rz,  0, array.get(_pre_gc_cnt_rz,  0) + 1)
             else if z.is_bull
-                _pre_gc_cnt_sup += 1
+                array.set(_pre_gc_cnt_sup, 0, array.get(_pre_gc_cnt_sup, 0) + 1)
             else
-                _pre_gc_cnt_res += 1
+                array.set(_pre_gc_cnt_res, 0, array.get(_pre_gc_cnt_res, 0) + 1)
 
         if array.size(candidates) > 0
             float[] scores  = array.new_float()
@@ -5953,10 +5954,10 @@ for z in zone_db
             _post_cnt_sup += 1
         else
             _post_cnt_res += 1
-int cnt_sup = math.max(_pre_gc_cnt_sup, _post_cnt_sup)
-int cnt_res = math.max(_pre_gc_cnt_res, _post_cnt_res)
-int cnt_bb  = math.max(_pre_gc_cnt_bb,  _post_cnt_bb)
-int cnt_rz  = math.max(_pre_gc_cnt_rz,  _post_cnt_rz)
+int cnt_sup = math.max(array.get(_pre_gc_cnt_sup, 0), _post_cnt_sup)
+int cnt_res = math.max(array.get(_pre_gc_cnt_res, 0), _post_cnt_res)
+int cnt_bb  = math.max(array.get(_pre_gc_cnt_bb,  0),  _post_cnt_bb)
+int cnt_rz  = math.max(array.get(_pre_gc_cnt_rz,  0),  _post_cnt_rz)
 
 var float max_eq = SIM_INITIAL_CAPITAL
 max_eq := math.max(max_eq, sim_equity)
