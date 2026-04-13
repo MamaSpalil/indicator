@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Fluppy — Полная документация ENGINE + VISUAL (Pine Script v6)</title>
+<style>
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --bg-card: #1c2128;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent-green: #3fb950;
+  --accent-red: #f85149;
+  --accent-blue: #58a6ff;
+  --accent-yellow: #d29922;
+  --accent-purple: #bc8cff;
+  --accent-orange: #f0883e;
+  --accent-cyan: #39d2c0;
+  --border: #30363d;
+  --gradient-bull: linear-gradient(135deg, #0d4429 0%, #1a6b3c 100%);
+  --gradient-bear: linear-gradient(135deg, #5c1d1d 0%, #8b2c2c 100%);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  scroll-behavior: smooth;
+}
+.container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
+/* Navigation */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(13,17,23,0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  padding: 0.8rem 2rem;
+}
+nav .nav-inner {
+  max-width: 1400px; margin: 0 auto;
+  display: flex; align-items: center; gap: 1.5rem;
+  overflow-x: auto;
+}
+nav a {
+  color: var(--text-secondary); text-decoration: none;
+  font-size: 0.85rem; white-space: nowrap;
+  padding: 0.4rem 0.8rem; border-radius: 6px;
+  transition: all 0.2s;
+}
+nav a:hover, nav a.active { color: var(--text-primary); background: var(--bg-tertiary); }
+nav .logo { font-weight: 700; color: var(--accent-cyan); font-size: 1.1rem; }
+/* Hero */
+.hero {
+  margin-top: 60px;
+  padding: 4rem 0;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(57,210,192,0.08) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border);
+}
+.hero h1 { font-size: 3rem; font-weight: 800; margin-bottom: 1rem; }
+.hero h1 span { color: var(--accent-cyan); }
+.hero p { font-size: 1.2rem; color: var(--text-secondary); max-width: 800px; margin: 0 auto 2rem; }
+.hero .badges { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.badge {
+  padding: 0.4rem 1rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
+  border: 1px solid var(--border);
+}
+.badge-green { background: rgba(63,185,80,0.15); color: var(--accent-green); border-color: rgba(63,185,80,0.3); }
+.badge-blue { background: rgba(88,166,255,0.15); color: var(--accent-blue); border-color: rgba(88,166,255,0.3); }
+.badge-purple { background: rgba(188,140,255,0.15); color: var(--accent-purple); border-color: rgba(188,140,255,0.3); }
+.badge-yellow { background: rgba(210,153,34,0.15); color: var(--accent-yellow); border-color: rgba(210,153,34,0.3); }
+/* Sections */
+section { padding: 4rem 0; border-bottom: 1px solid var(--border); }
+section:last-child { border-bottom: none; }
+h2 {
+  font-size: 2rem; font-weight: 700; margin-bottom: 2rem;
+  padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent-cyan);
+  display: inline-block;
+}
+h3 { font-size: 1.4rem; font-weight: 600; margin: 2rem 0 1rem; color: var(--accent-blue); }
+h4 { font-size: 1.1rem; font-weight: 600; margin: 1.5rem 0 0.8rem; color: var(--accent-purple); }
+p { margin-bottom: 1rem; color: var(--text-secondary); }
+/* Cards */
+.card-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem; margin: 2rem 0;
+}
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.5rem; transition: all 0.3s;
+}
+.card:hover { border-color: var(--accent-cyan); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+.card-icon { font-size: 2rem; margin-bottom: 1rem; }
+.card h4 { color: var(--text-primary); margin: 0 0 0.5rem; }
+.card p { font-size: 0.9rem; margin: 0; }
+/* Tables */
+table {
+  width: 100%; border-collapse: collapse; margin: 1.5rem 0;
+  background: var(--bg-card); border-radius: 8px; overflow: hidden;
+}
+th, td { padding: 0.8rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+th {
+  background: var(--bg-tertiary); font-weight: 600;
+  color: var(--accent-cyan); font-size: 0.85rem; text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+td { font-size: 0.9rem; }
+tr:hover td { background: rgba(88,166,255,0.05); }
+.val-green { color: var(--accent-green); font-weight: 600; }
+.val-red { color: var(--accent-red); font-weight: 600; }
+.val-yellow { color: var(--accent-yellow); font-weight: 600; }
+.val-blue { color: var(--accent-blue); font-weight: 600; }
+.val-purple { color: var(--accent-purple); font-weight: 600; }
+.val-cyan { color: var(--accent-cyan); font-weight: 600; }
+/* Code blocks */
+pre {
+  background: var(--bg-tertiary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1.2rem; overflow-x: auto;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem; line-height: 1.7; margin: 1rem 0;
+}
+code { color: var(--accent-cyan); }
+.code-comment { color: var(--text-muted); }
+.code-keyword { color: var(--accent-purple); }
+.code-string { color: var(--accent-green); }
+.code-number { color: var(--accent-orange); }
+/* Flow diagrams */
+.flow {
+  display: flex; align-items: center; gap: 0.5rem;
+  flex-wrap: wrap; margin: 1.5rem 0; padding: 1.5rem;
+  background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border);
+}
+.flow-step {
+  padding: 0.6rem 1.2rem; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 600; white-space: nowrap;
+}
+.flow-arrow { color: var(--text-muted); font-size: 1.2rem; }
+.flow-green { background: rgba(63,185,80,0.2); color: var(--accent-green); border: 1px solid rgba(63,185,80,0.3); }
+.flow-blue { background: rgba(88,166,255,0.2); color: var(--accent-blue); border: 1px solid rgba(88,166,255,0.3); }
+.flow-purple { background: rgba(188,140,255,0.2); color: var(--accent-purple); border: 1px solid rgba(188,140,255,0.3); }
+.flow-yellow { background: rgba(210,153,34,0.2); color: var(--accent-yellow); border: 1px solid rgba(210,153,34,0.3); }
+.flow-red { background: rgba(248,81,73,0.2); color: var(--accent-red); border: 1px solid rgba(248,81,73,0.3); }
+.flow-cyan { background: rgba(57,210,192,0.2); color: var(--accent-cyan); border: 1px solid rgba(57,210,192,0.3); }
+/* Metric boxes */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.metric {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 1.2rem; text-align: center;
+}
+.metric .value { font-size: 2rem; font-weight: 800; }
+.metric .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.3rem; }
+/* Tabs */
+.tabs { display: flex; gap: 0; margin-bottom: 0; border-bottom: 1px solid var(--border); }
+.tab {
+  padding: 0.8rem 1.5rem; cursor: pointer; color: var(--text-secondary);
+  font-size: 0.9rem; font-weight: 600; border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); }
+.tab-content { display: none; padding: 1.5rem 0; }
+.tab-content.active { display: block; }
+/* Alert boxes */
+.alert {
+  padding: 1rem 1.5rem; border-radius: 8px; margin: 1rem 0;
+  border-left: 4px solid;
+}
+.alert-info { background: rgba(88,166,255,0.1); border-color: var(--accent-blue); }
+.alert-warn { background: rgba(210,153,34,0.1); border-color: var(--accent-yellow); }
+.alert-success { background: rgba(63,185,80,0.1); border-color: var(--accent-green); }
+.alert-danger { background: rgba(248,81,73,0.1); border-color: var(--accent-red); }
+.alert strong { color: var(--text-primary); }
+/* TradingView embed placeholder */
+.chart-placeholder {
+  background: var(--bg-tertiary); border: 1px solid var(--border);
+  border-radius: 12px; padding: 2rem; margin: 1.5rem 0;
+  text-align: center; min-height: 400px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.chart-placeholder .icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.5; }
+.chart-placeholder p { color: var(--text-muted); }
+/* Responsive */
+@media (max-width: 768px) {
+  .hero h1 { font-size: 2rem; }
+  .card-grid { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  nav .nav-inner { gap: 0.5rem; }
+}
+/* Scroll to top */
+.scroll-top {
+  position: fixed; bottom: 2rem; right: 2rem;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--accent-cyan); color: var(--bg-primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem; cursor: pointer; opacity: 0;
+  transition: all 0.3s; z-index: 50;
+  text-decoration: none;
+}
+.scroll-top.visible { opacity: 1; }
+/* Recommendation panels */
+.rec-panel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; margin: 1.5rem 0;
+}
+.rec-header {
+  padding: 1rem 1.5rem; font-weight: 700; font-size: 1.1rem;
+  border-bottom: 1px solid var(--border);
+}
+.rec-body { padding: 1.5rem; }
+.rec-bull .rec-header { background: var(--gradient-bull); }
+.rec-bear .rec-header { background: var(--gradient-bear); }
+/* Profit table highlight */
+.profit-high { background: rgba(63,185,80,0.15) !important; }
+.profit-med { background: rgba(210,153,34,0.1) !important; }
+/* List styles */
+ul, ol { margin: 0.5rem 0 1rem 1.5rem; color: var(--text-secondary); }
+li { margin-bottom: 0.4rem; font-size: 0.95rem; }
+li strong { color: var(--text-primary); }
+/* Separator */
+.sep { height: 1px; background: var(--border); margin: 2rem 0; }
+/* Two column layout */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+@media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+<div class="nav-inner">
+  <a href="#hero" class="logo">🐬 Trading Fluppy</a>
+  <a href="#overview">Обзор</a>
+  <a href="#architecture">Архитектура</a>
+  <a href="#zones">Зоны</a>
+  <a href="#scoring">Скоринг</a>
+  <a href="#entry-exit">Вход/Выход</a>
+  <a href="#risk">Риск</a>
+  <a href="#settings">Настройки</a>
+  <a href="#recommendations">Рекомендации</a>
+  <a href="#pairs">Торговые пары</a>
+  <a href="#dashboard">Дашборд</a>
+</div>
+</nav>
+
+<!-- Hero Section -->
+<div class="hero" id="hero">
+<div class="container">
+  <h1>Trading <span>Fluppy</span> ENGINE + VISUAL</h1>
+  <p>Профессиональная двухфайловая система Smart Money Concepts (SMC) на Pine Script v6 для TradingView. Полная документация, принцип работы, детальные настройки и рекомендации по прибыльной торговле криптовалютными фьючерсами на OKX.</p>
+  <div class="badges">
+    <span class="badge badge-green">Pine Script v6</span>
+    <span class="badge badge-blue">ENGINE V278</span>
+    <span class="badge badge-purple">~6500 строк кода</span>
+    <span class="badge badge-yellow">90+ параметров</span>
+  </div>
+</div>
+</div>
+
+<!-- Section 1: Overview -->
+<section id="overview">
+<div class="container">
+<h2>📋 Общий обзор системы</h2>
+
+<p>Trading Fluppy — это профессиональная двухкомпонентная торговая система, реализованная на языке Pine Script v6 для платформы TradingView. Система использует концепции Smart Money (SMC) для определения высоковероятных зон торговли на криптовалютных фьючерсных рынках.</p>
+
+<div class="metrics">
+  <div class="metric"><div class="value val-cyan">5762</div><div class="label">Строк ENGINE</div></div>
+  <div class="metric"><div class="value val-purple">743</div><div class="label">Строк VISUAL</div></div>
+  <div class="metric"><div class="value val-green">6</div><div class="label">Типов зон</div></div>
+  <div class="metric"><div class="value val-yellow">90+</div><div class="label">Параметров</div></div>
+  <div class="metric"><div class="value val-blue">51</div><div class="label">Plot-каналов</div></div>
+  <div class="metric"><div class="value val-red">15</div><div class="label">Свечных паттернов</div></div>
+</div>
+
+<h3>Ключевые возможности</h3>
+<div class="card-grid">
+  <div class="card">
+    <div class="card-icon">🏛️</div>
+    <h4>Smart Money Concepts (SMC)</h4>
+    <p>Order Blocks, Rejection Zones, Fair Value Gaps, Breaker Blocks, Propulsion Blocks, Mitigation Blocks — полный арсенал институционального анализа.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">🧠</div>
+    <h4>Нейросеть 6→4→1</h4>
+    <p>Онлайн-обучающаяся нейросеть с Widrow-Hoff алгоритмом для адаптивного скоринга зон. 6 входных нейронов, 4 скрытых, 1 выходной.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">📊</div>
+    <h4>Стохастическая модель</h4>
+    <p>Биварная стохастическая модель (время + объём) с экспоненциальным затуханием для прогнозирования вероятности отскока от зоны.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">🎯</div>
+    <h4>6-компонентный скоринг</h4>
+    <p>Z-Score, Volume, Trend, Sweep, Efficiency, PA Patterns — каждый компонент с настраиваемыми весами для точной оценки качества зон.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⚡</div>
+    <h4>5-уровневая адаптация TF</h4>
+    <p>Автоматическая подстройка 20+ параметров под текущий таймфрейм: MICRO (M1-M3), SCALP (M5-M15), DAY (M30-H1), SWING (H2-H4), MACRO (D1+).</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">🛡️</div>
+    <h4>Продвинутый риск-менеджмент</h4>
+    <p>Kelly Criterion, Sharpe/Sortino Ratio, Monte Carlo Bootstrap (500 путей), симулированные позиции, break-even, trailing stop, partial profit.</p>
+  </div>
+</div>
+
+<h3>Технические индикаторы в составе системы</h3>
+<table>
+  <tr><th>Индикатор</th><th>Назначение</th><th>Период по умолчанию</th></tr>
+  <tr><td class="val-cyan">RSI</td><td>Фильтрация входов по перекупленности/перепроданности</td><td>50</td></tr>
+  <tr><td class="val-cyan">ATR</td><td>Измерение волатильности, размер SL/TP, допуски зон</td><td>14</td></tr>
+  <tr><td class="val-cyan">EMA</td><td>Определение тренда на HTF и ITF</td><td>200</td></tr>
+  <tr><td class="val-cyan">ADX</td><td>Сила тренда, фильтр флэта</td><td>14</td></tr>
+  <tr><td class="val-cyan">VWAP</td><td>Объёмно-взвешенная средняя, фильтр Premium/Discount</td><td>Session</td></tr>
+  <tr><td class="val-cyan">Z-Score</td><td>Статистическая аномальность свечи (σ отклонение)</td><td>100</td></tr>
+  <tr><td class="val-cyan">RVOL</td><td>Относительный объём (volume / EMA(volume))</td><td>40</td></tr>
+  <tr><td class="val-cyan">KAMA</td><td>Адаптивная скользящая средняя Kaufman</td><td>Adaptive</td></tr>
+  <tr><td class="val-cyan">Hurst Exponent</td><td>Степень трендовости рынка (R/S анализ)</td><td>100</td></tr>
+  <tr><td class="val-cyan">CVD</td><td>Кумулятивная дельта объёма, дивергенции</td><td>Rolling</td></tr>
+  <tr><td class="val-cyan">Volume Profile (POC)</td><td>Точка контроля — уровень максимального объёма</td><td>100 баров, 20 бинов</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Section 2: Architecture -->
+<section id="architecture">
+<div class="container">
+<h2>🏗️ Архитектура системы ENGINE ↔ VISUAL</h2>
+
+<h3>Принцип двухфайловой архитектуры</h3>
+<p>Система разделена на два индикатора, работающих как единый механизм. ENGINE выполняет все вычисления и передаёт результаты в VISUAL через невидимые plot-каналы.</p>
+
+<div class="flow">
+  <span class="flow-step flow-cyan">ENGINE indicator()</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-blue">51× plot() каналов</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-purple">input.source() маппинг</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-green">VISUAL indicator()</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-yellow">Дашборд + Hints</span>
+</div>
+
+<div class="alert alert-info">
+  <strong>⚡ Важно:</strong> TradingView <code>strategy()</code> не экспортирует <code>plot()</code> для <code>input.source()</code>. Поэтому ENGINE реализован как <code>indicator()</code> с симулированным трейдингом (SIM_INITIAL_CAPITAL = 1000.0).
+</div>
+
+<h3>Протокол передачи данных</h3>
+
+<div class="two-col">
+<div>
+<h4>ENGINE → VISUAL (51 канал)</h4>
+<table>
+  <tr><th>#</th><th>Канал</th><th>Данные</th></tr>
+  <tr><td>1</td><td class="val-cyan">ENG: Version</td><td>278.0 (ПЕРВЫЙ plot!)</td></tr>
+  <tr><td>2</td><td>ENG: Z-Score</td><td>Статистическое отклонение</td></tr>
+  <tr><td>3</td><td>ENG: RVOL</td><td>Относительный объём</td></tr>
+  <tr><td>4</td><td>ENG: HTF Trend</td><td>1 (bull) / 0 / -1 (bear)</td></tr>
+  <tr><td>5</td><td>ENG: ITF Trend</td><td>1 / 0 / -1</td></tr>
+  <tr><td>6</td><td>ENG: Major BOS</td><td>Major break of structure</td></tr>
+  <tr><td>7</td><td>ENG: VWAP</td><td>VWAP price</td></tr>
+  <tr><td>8-11</td><td>ENG: Zone counts</td><td>Sup / Res / BB / RZ</td></tr>
+  <tr><td>12-16</td><td>ENG: Stochastic</td><td>Prob, N, Mu, Sigma, Eta</td></tr>
+  <tr><td>17-21</td><td>ENG: Strategy</td><td>Trades, Wins, PnL, Equity, DD</td></tr>
+  <tr><td>22-24</td><td>ENG: Top Zone</td><td>Price, Score, Distance</td></tr>
+  <tr><td>25-28</td><td>ENG: Risk</td><td>Kelly, Sharpe, Sortino, MC DD95</td></tr>
+  <tr><td>29-31</td><td>ENG: Market</td><td>Regime, Hurst, CVD Div</td></tr>
+  <tr><td>32-33</td><td>ENG: Micro</td><td>VCP+Squeeze+Abs, BOS+CHoCH</td></tr>
+  <tr><td>34</td><td>ENG: POC Price</td><td>Point of Control</td></tr>
+  <tr><td>35-51</td><td>ENG: Params + Sim</td><td>Config + Sim position data</td></tr>
+</table>
+</div>
+<div>
+<h4>Версионирование и подключение</h4>
+<p>VISUAL автоматически определяет подключение к ENGINE по значению первого канала:</p>
+<pre>
+<span class="code-keyword">EXPECTED_ENG_VERSION</span> = <span class="code-number">278.0</span>
+<span class="code-keyword">_auto_engine</span> = math.round(eng_version) == <span class="code-number">278.0</span>
+</pre>
+<p>Три режима подключения:</p>
+<ul>
+  <li><strong>Auto</strong> (по умолчанию) — автодетекция по Version каналу</li>
+  <li><strong>Force ON</strong> — принудительное использование ENGINE данных</li>
+  <li><strong>Force OFF</strong> — standalone режим с fallback-расчётами</li>
+</ul>
+
+<div class="alert alert-warn">
+  <strong>⚠️ Лимит 64 plot-слота:</strong> TradingView ограничивает 64 output slots (plot, plotshape, bgcolor, fill и др.). ENGINE использует ~51 из 64. Добавление новых каналов требует оптимизации существующих.
+</div>
+
+<h4>Порядок подключения в TradingView</h4>
+<ol>
+  <li>Добавить ENGINE индикатор на график</li>
+  <li>Добавить VISUAL индикатор поверх ENGINE</li>
+  <li>TradingView автоматически маппит каналы по порядку</li>
+  <li>Проверить статус в дашборде: 🟢 = подключено</li>
+</ol>
+</div>
+</div>
+
+<h3>Основной вычислительный pipeline ENGINE</h3>
+<div class="flow">
+  <span class="flow-step flow-blue">OHLCV данные</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-cyan">Auto-Tuner (TF+Asset)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-green">Индикаторы (RSI, ATR, EMA, VWAP)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-purple">Пивоты + BOS/CHoCH</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-yellow">Кластеризация → Зоны</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-red">Скоринг (6 компонент + NN)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-cyan">Entry Filters</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-green">Sim Position + Risk</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-blue">51× plot() Export</span>
+</div>
+
+<h3>Структура кода ENGINE (~5762 строки)</h3>
+<table>
+  <tr><th>Секция</th><th>Строки</th><th>Описание</th></tr>
+  <tr><td>Декларация + Константы</td><td>1-61</td><td>indicator(), SIM_INITIAL_CAPITAL, guards, buffers</td></tr>
+  <tr><td class="val-yellow">Inputs (90+ параметров)</td><td>64-328</td><td>Все пользовательские настройки</td></tr>
+  <tr><td>Auto-Tuner</td><td>334-671</td><td>5-уровневая TF адаптация, asset detection</td></tr>
+  <tr><td>Sessions</td><td>690-748</td><td>Asia/London/NY/Overlap сессии</td></tr>
+  <tr><td class="val-cyan">Math Core</td><td>750-873</td><td>OHLCV буферы, RSI, ATR, EMA, Z-Score, RVOL</td></tr>
+  <tr><td>Pivot Detection</td><td>914-1048</td><td>Swing highs/lows, structure tracking</td></tr>
+  <tr><td>Trend Channels</td><td>1049-1635</td><td>HH/HL/LH/LL, каналы, R²-адаптивный lookback</td></tr>
+  <tr><td class="val-purple">Zone Type + Methods</td><td>1668-2478</td><td>Zone UDT (40+ полей), update(), trigger_bb()</td></tr>
+  <tr><td>Stochastic + NN</td><td>2498-2924</td><td>Forecast model, neural net 6→4→1, KAMA, Hurst</td></tr>
+  <tr><td>BOS/CHoCH + FVG</td><td>2991-3168</td><td>Market structure breaks, gap detection</td></tr>
+  <tr><td>Pattern Detection</td><td>3208-3425</td><td>15 свечных паттернов</td></tr>
+  <tr><td class="val-green">Zone Scoring</td><td>3480-3540</td><td>Confluence score, component weights</td></tr>
+  <tr><td class="val-yellow">Clustering (f_cluster)</td><td>3542-4003</td><td>Основной алгоритм создания зон</td></tr>
+  <tr><td>Zone Manager</td><td>4005-4857</td><td>Merging, GC, creation, RZ, sniper</td></tr>
+  <tr><td class="val-red">Execution Logic</td><td>5007-5436</td><td>Entry filters, SL/TP, sim position</td></tr>
+  <tr><td>Risk Metrics</td><td>5477-5548</td><td>Kelly, Sharpe, Sortino, Monte Carlo</td></tr>
+  <tr><td class="val-blue">Export Channels</td><td>5647-5762</td><td>51× plot() для VISUAL</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Section 3: Zones -->
+<section id="zones">
+<div class="container">
+<h2>🏛️ Типы зон и алгоритмы обнаружения</h2>
+
+<p>Система обнаруживает 6 основных типов зон, каждый с уникальным алгоритмом детекции, валидации и скоринга.</p>
+
+<div class="card-grid">
+  <div class="card" style="border-left: 4px solid var(--accent-green);">
+    <div class="card-icon">📦</div>
+    <h4>Order Blocks (OB)</h4>
+    <p><strong>Зоны поддержки/сопротивления</strong> — основной тип. Кластерный анализ свечей вблизи пивотов. <code>f_cluster()</code> сканирует назад от пивота, находит свечи одного направления, группирует по допуску ATR.</p>
+    <p><span class="val-green">Бычий OB</span>: Кластер красных свечей перед разворотом вверх.</p>
+    <p><span class="val-red">Медвежий OB</span>: Кластер зелёных свечей перед разворотом вниз.</p>
+  </div>
+  <div class="card" style="border-left: 4px solid var(--accent-purple);">
+    <div class="card-icon">🔄</div>
+    <h4>Rejection Zones (RZ)</h4>
+    <p><strong>Зоны отклонения</strong> — мощное отклонение цены от уровня через длинные тени. Wick-to-body ratio на пивотах.</p>
+    <p>Бонусы: RSI дивергенция (+15), Hidden Rejection (+12), Quadratic Wick (до +20).</p>
+  </div>
+  <div class="card" style="border-left: 4px solid var(--accent-blue);">
+    <div class="card-icon">📐</div>
+    <h4>Fair Value Gaps (FVG)</h4>
+    <p><strong>Ценовые разрывы</strong> — 4 подтипа: Classic FVG, Vol Imbalance, Marubozu, Open-Open. Валидация: Volume, Z-Score, размер в ATR.</p>
+  </div>
+  <div class="card" style="border-left: 4px solid var(--accent-orange);">
+    <div class="card-icon">💔</div>
+    <h4>Breaker Blocks (BB)</h4>
+    <p><strong>Пробитые OB</strong> — конвертация с обратной полярностью. Скор: 0.8 x old_score + momentum. Cascade limit: 2.</p>
+  </div>
+  <div class="card" style="border-left: 4px solid var(--accent-yellow);">
+    <div class="card-icon">🚀</div>
+    <h4>Propulsion Blocks</h4>
+    <p><strong>OB + FVG на одной свече</strong> — экстремальный институциональный интерес. Бонус: <span class="val-yellow">+20</span>.</p>
+  </div>
+  <div class="card" style="border-left: 4px solid var(--accent-cyan);">
+    <div class="card-icon">🛡️</div>
+    <h4>Mitigation Blocks</h4>
+    <p><strong>BB прошедший ретест</strong> — подтверждение смены полярности. Бонус: <span class="val-cyan">+20</span>.</p>
+  </div>
+</div>
+
+<h3>Жизненный цикл зоны</h3>
+<div class="flow">
+  <span class="flow-step flow-blue">Пивот</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-cyan">f_cluster()</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-green">Скоринг</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-purple">Бонусы</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-yellow">BEST/STRONG/NORMAL</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-green">Aging</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-red">Invalidate/BB</span>
+</div>
+
+<h4>Тиры зон по скору</h4>
+<table>
+  <tr><th>Tier</th><th>Скор</th><th>Описание</th><th>Размер позиции</th></tr>
+  <tr class="profit-high"><td class="val-green">BEST</td><td>100+</td><td>Множественные подтверждения</td><td>100%</td></tr>
+  <tr class="profit-med"><td class="val-blue">STRONG</td><td>75-99</td><td>Хорошая конфлюэнция</td><td>75%</td></tr>
+  <tr><td class="val-yellow">NORMAL</td><td>45-74</td><td>Базовые подтверждения</td><td>50%</td></tr>
+  <tr><td class="val-red">PIVOT</td><td>&lt;45</td><td>Только структурная зона</td><td>Пропустить</td></tr>
+</table>
+
+<h3>Алгоритм f_cluster() — детальная схема</h3>
+<pre><span class="code-comment">// Вход: swing_idx (индекс пивота), is_bull (направление)</span>
+<span class="code-keyword">f_cluster</span>(swing_idx, is_bull) =&gt;
+    expected_color = is_bull ? <span class="code-string">"red"</span> : <span class="code-string">"green"</span>
+    <span class="code-keyword">for</span> i = <span class="code-number">1</span> <span class="code-keyword">to</span> ob_len
+        <span class="code-keyword">if</span> candle[swing_idx - i].color == expected_color
+            <span class="code-keyword">if</span> abs(candle.close - cluster_avg) &lt;= p_cluster_tol x ATR
+                cluster.add(candle)
+    zone_top = max(cluster.highs), zone_bot = min(cluster.lows)
+    score = f_compute_zone_score(z, rvol, trend, sweep, eff, pa) + bonuses + nn
+    <span class="code-keyword">return</span> [zone_top, zone_bot, min(score, <span class="code-number">150.0</span>), ...]</pre>
+
+</div>
+</section>
+
+<!-- Section 4: Scoring -->
+<section id="scoring">
+<div class="container">
+<h2>🎯 Система скоринга зон</h2>
+
+<h3>6-компонентная модель оценки качества</h3>
+<p>Каждая зона оценивается по 6 независимым компонентам. Веса нормализуются к сумме = 100%. Финальный скор ограничен диапазоном [0, 150].</p>
+
+<table>
+  <tr><th>Компонент</th><th>Вес (дефолт)</th><th>Алгоритм</th><th>Диапазон</th></tr>
+  <tr>
+    <td class="val-cyan">Z-Score (Аномальность)</td><td>25%</td>
+    <td>Сигмоидная нормализация: sigmoid((z_score - z_min) / (z_max - z_min)). Измеряет насколько свеча статистически аномальна по размеру тела.</td>
+    <td>0-100</td>
+  </tr>
+  <tr>
+    <td class="val-green">Volume (RVOL)</td><td>15%</td>
+    <td>Логарифмическая нормализация: log(RVOL / mom_rvol) x 50. Относительный объём показывает институциональную активность.</td>
+    <td>0-100</td>
+  </tr>
+  <tr>
+    <td class="val-blue">Trend Alignment</td><td>15%</td>
+    <td>Бинарная проверка: зона совпадает с направлением HTF/ITF тренда = полный вес, иначе = 0.</td>
+    <td>0 или weight</td>
+  </tr>
+  <tr>
+    <td class="val-purple">Sweep / Liquidity Grab</td><td>15%</td>
+    <td>Обнаружение sweep ликвидности вблизи зоны: 0.6x (минимальный sweep) или 1.0x (глубокий sweep).</td>
+    <td>0 - weight</td>
+  </tr>
+  <tr>
+    <td class="val-yellow">Efficiency (FER)</td><td>15%</td>
+    <td>Fractal Efficiency Ratio: net_move / total_move за последние eff_len баров. Высокий FER = чистое направленное движение.</td>
+    <td>0-100</td>
+  </tr>
+  <tr>
+    <td class="val-orange">PA Patterns (Бонус)</td><td>15%</td>
+    <td>Свечные паттерны: Break Engulfing, Sweep Volume, Pin Bars. Каждый подтверждённый паттерн добавляет к компоненту.</td>
+    <td>0 - weight</td>
+  </tr>
+</table>
+
+<h3>Бонусная система (20+ бонусов)</h3>
+<div class="two-col">
+<div>
+<h4>Свечные паттерны</h4>
+<table>
+  <tr><th>Паттерн</th><th>Бонус</th></tr>
+  <tr><td>Three Soldiers / Black Crows</td><td class="val-green">+10</td></tr>
+  <tr><td>Tweezer Top / Bottom</td><td class="val-green">+8</td></tr>
+  <tr><td>Inside Bar</td><td class="val-green">+5</td></tr>
+  <tr><td>Marubozu</td><td class="val-green">+12</td></tr>
+  <tr><td>Outside Bar</td><td class="val-green">+8</td></tr>
+  <tr><td>Fakey (ложный пробой)</td><td class="val-green">+10</td></tr>
+</table>
+</div>
+<div>
+<h4>Структурные и институциональные</h4>
+<table>
+  <tr><th>Фактор</th><th>Бонус</th></tr>
+  <tr><td>BOS (Break of Structure)</td><td class="val-blue">+20</td></tr>
+  <tr><td>CHoCH (Change of Character)</td><td class="val-blue">+15</td></tr>
+  <tr><td>Kill Zone (London/NY)</td><td class="val-yellow">+10</td></tr>
+  <tr><td>Kill Zone (Asia)</td><td class="val-red">-5</td></tr>
+  <tr><td>Institutional Footprint</td><td class="val-purple">+15</td></tr>
+  <tr><td>Propulsion Block</td><td class="val-cyan">+20</td></tr>
+  <tr><td>Absorption</td><td class="val-cyan">+10</td></tr>
+  <tr><td>Keltner Squeeze</td><td class="val-cyan">+8</td></tr>
+</table>
+</div>
+</div>
+
+<h4>Rejection Zone специфичные бонусы</h4>
+<table>
+  <tr><th>Бонус</th><th>Значение</th><th>Условие</th></tr>
+  <tr><td>RSI Divergence</td><td class="val-purple">+15</td><td>Price lower low + RSI higher low (bull) или наоборот</td></tr>
+  <tr><td>Hidden Rejection</td><td class="val-purple">+12</td><td>3+ свечей подряд отклоняются от уровня</td></tr>
+  <tr><td>Quadratic Wick</td><td class="val-purple">0-20</td><td>pow(min(wick_ratio, 3), 2) x 20</td></tr>
+  <tr><td>Neighbor Pivots</td><td class="val-purple">0-25</td><td>Количество пивотов в радиусе 15 баров</td></tr>
+  <tr><td>NN Score Overlay</td><td class="val-purple">0-150</td><td>Выход нейросети x вес</td></tr>
+</table>
+
+<h3>Confluence Score (конфлюэнция)</h3>
+<p>Функция <code>f_calc_confluence_score()</code> проверяет совпадение зоны с ключевыми уровнями. Каждое совпадение: +5 очков (максимум 30).</p>
+
+<div class="flow">
+  <span class="flow-step flow-green">Fib 38.2%</span>
+  <span class="flow-step flow-green">Fib 50%</span>
+  <span class="flow-step flow-green">Fib 61.8%</span>
+  <span class="flow-step flow-green">Fib 78.6%</span>
+  <span class="flow-step flow-blue">VWAP</span>
+  <span class="flow-step flow-yellow">Round Level</span>
+  <span class="flow-step flow-purple">Prev Day H</span>
+  <span class="flow-step flow-purple">Prev Day L</span>
+  <span class="flow-step flow-purple">Prev Day C</span>
+</div>
+<p>Допуск совпадения: 0.2 x ATR от уровня. Confluence score добавляется к итоговому скору зоны.</p>
+
+<h3>Нейросеть 6 &#8594; 4 &#8594; 1</h3>
+<p>Адаптивная нейросеть с онлайн-обучением (Widrow-Hoff, lr = 0.01) для динамической коррекции скоринга:</p>
+<table>
+  <tr><th>Вход</th><th>Нормализация</th><th>Описание</th></tr>
+  <tr><td>z_score</td><td>z_score / 5</td><td>Статистическая аномальность</td></tr>
+  <tr><td>rvol</td><td>min(rvol, 5) / 5</td><td>Относительный объём</td></tr>
+  <tr><td>trend</td><td>0 или 1</td><td>Совпадение с трендом</td></tr>
+  <tr><td>sweep</td><td>0 или 1</td><td>Наличие sweep</td></tr>
+  <tr><td>efficiency</td><td>0-1 (FER)</td><td>Эффективность движения</td></tr>
+  <tr><td>pa_bonus</td><td>min(pa, 50) / 50</td><td>Свечные паттерны</td></tr>
+</table>
+<p>Скрытый слой: 4 нейрона с sigmoid активацией. Выход: 0-1, масштабируется в 0-150.</p>
+
+<h3>Стохастическая модель прогнозирования</h3>
+<p>Биварная модель (время до ретеста + объём при ретесте) с экспоненциальным затуханием весов:</p>
+<pre><span class="code-comment">// Формула весов наблюдений</span>
+w = exp(-<span class="code-number">2</span> / n * age)
+
+<span class="code-comment">// Seasonality для крипто (24ч цикл)</span>
+seasonal = <span class="code-number">1</span> + <span class="code-number">0.1</span> * sin(<span class="code-number">2</span>*PI*hour/<span class="code-number">24</span>) + <span class="code-number">0.05</span> * sin(<span class="code-number">2</span>*PI*day/<span class="code-number">5</span>)
+
+<span class="code-comment">// Confidence scaling</span>
+prob = <span class="code-number">50</span> + (raw - <span class="code-number">50</span>) * sqrt(n / max_n)
+
+<span class="code-comment">// CDF Hastings approximation (precision 1.5e-7)</span></pre>
+
+</div>
+</section>
+
+<!-- Section 5: Entry/Exit -->
+<section id="entry-exit">
+<div class="container">
+<h2>⚡ Логика входа и выхода</h2>
+
+<h3>Три режима входа</h3>
+<div class="card-grid">
+  <div class="card" style="border-top: 3px solid var(--accent-green);">
+    <h4>Touch (Limit) — По умолчанию</h4>
+    <p>Цена касается края зоны. Требуется подтверждение pin-bar (min 2) и reverse spike (RVOL &gt; 3.0) или pattern combo. Самый точный, но может пропустить быстрые движения.</p>
+    <p class="val-green">Рекомендуется для: M5-M30, все фьючерсные пары</p>
+  </div>
+  <div class="card" style="border-top: 3px solid var(--accent-blue);">
+    <h4>Candle Close</h4>
+    <p>Свеча полностью закрывается внутри зоны. Требуется pin-bar + impulse. Более надёжный, но вход чуть хуже (дальше от edge).</p>
+    <p class="val-blue">Рекомендуется для: H1-H4, BTC/USDT и ETH/USDT</p>
+  </div>
+  <div class="card" style="border-top: 3px solid var(--accent-purple);">
+    <h4>ChoCh (Confirm)</h4>
+    <p>Требуется BOS (Break of Structure) + закрытие внутри зоны. Самый консервативный, наименьший win rate но наилучший R:R.</p>
+    <p class="val-purple">Рекомендуется для: D1+, volatile пары (ZEC/USDT)</p>
+  </div>
+</div>
+
+<h3>Фильтры входа (12 независимых проверок)</h3>
+<table>
+  <tr><th>Фильтр</th><th>Переменная</th><th>Условие</th><th>По умолчанию</th></tr>
+  <tr><td class="val-green">Trend</td><td>tr_ok</td><td>EMA direction (close &gt; htf_ema для LONG)</td><td>ON</td></tr>
+  <tr><td class="val-green">Premium/Discount</td><td>pd_ok</td><td>close &lt; midpoint для LONG (в Discount зоне)</td><td>ON</td></tr>
+  <tr><td class="val-green">RSI</td><td>rsi_ok</td><td>RSI &lt; 75 для LONG, &gt; 25 для SHORT</td><td>ON</td></tr>
+  <tr><td class="val-green">IDM (Inducement)</td><td>idm_ok</td><td>Inducement swept (ликвидность забрана)</td><td>ON</td></tr>
+  <tr><td class="val-green">ITF Alignment</td><td>itf_ok</td><td>ITF тренд совпадает с направлением</td><td>ON</td></tr>
+  <tr><td class="val-green">VWAP</td><td>vwap_ok</td><td>close &gt; VWAP для LONG (выше средней)</td><td>ON</td></tr>
+  <tr><td class="val-blue">Major BOS</td><td>major_ok</td><td>Major structure подтверждает</td><td>OFF</td></tr>
+  <tr><td class="val-blue">MSS Confirm</td><td>mss_ok</td><td>Missing Swing Signal подтверждение</td><td>OFF</td></tr>
+  <tr><td class="val-yellow">Min Confluence</td><td>conf_ok</td><td>Количество факторов &gt;= min_confluence</td><td>2</td></tr>
+  <tr><td class="val-yellow">ADX</td><td>adx_ok</td><td>ADX &gt; adx_lim (не флэт)</td><td>OFF</td></tr>
+  <tr><td class="val-yellow">Pin Bar</td><td>pin_ok</td><td>Наличие pin bar в зоне</td><td>ON</td></tr>
+  <tr><td class="val-yellow">R:R Minimum</td><td>rr_ok</td><td>(TP1 - Entry) / Risk &gt;= min_rr</td><td>1.5</td></tr>
+</table>
+
+<div class="alert alert-info">
+  <strong>V275+:</strong> Counter-trend entries требуют +1 дополнительный confluence factor (_trend_penalty). Если тренд не совпадает — нужно 3 фактора вместо 2.
+</div>
+
+<h3>Расчёт Stop-Loss</h3>
+<pre>SL = is_bull ? (zone.bot - ATR x sl_pad x final_pad_mult)
+             : (zone.top + ATR x sl_pad x final_pad_mult)
+
+<span class="code-comment">// final_pad_mult = auto_pad_mult x stoch_sl_boost</span>
+<span class="code-comment">// auto_pad_mult = 1.0 x 1.5 (if RVOL &gt; mom_rvol) x asset_atr_mult</span>
+<span class="code-comment">// stoch_sl_boost = 1.0 + (stoch_discount x 2.0)</span></pre>
+
+<h3>Расчёт Take-Profit</h3>
+<div class="two-col">
+<div>
+<h4>Fibonacci Extensions (дефолт)</h4>
+<table>
+  <tr><th>Уровень</th><th>Множитель</th><th>Расчёт</th></tr>
+  <tr><td class="val-green">TP1</td><td>1.618</td><td>entry + risk x 1.618</td></tr>
+  <tr><td class="val-blue">TP2</td><td>2.618</td><td>entry + risk x 2.618</td></tr>
+</table>
+</div>
+<div>
+<h4>Fixed Ratio (альтернатива)</h4>
+<table>
+  <tr><th>Уровень</th><th>Множитель</th><th>Расчёт</th></tr>
+  <tr><td class="val-green">TP1</td><td>part_ratio (1.5)</td><td>entry + risk x 1.5</td></tr>
+  <tr><td class="val-blue">TP2</td><td>tp_ratio (3.0)</td><td>entry + risk x 3.0</td></tr>
+</table>
+</div>
+</div>
+
+<h3>Управление позицией</h3>
+<div class="flow">
+  <span class="flow-step flow-green">Entry</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-blue">+1.0R: Break-Even</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-purple">+1.5R: Partial TP1</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-yellow">+2.0R: Trail Start</span>
+  <span class="flow-arrow">&#8594;</span>
+  <span class="flow-step flow-cyan">+2.618R: TP2 Full Exit</span>
+</div>
+
+<h3>Условия выхода (Sim Exit)</h3>
+<table>
+  <tr><th>Условие</th><th>Приоритет</th><th>Описание</th></tr>
+  <tr><td class="val-red">Stop Loss Hit</td><td>1 (высший)</td><td>low &lt;= SL (LONG) или high &gt;= SL (SHORT)</td></tr>
+  <tr><td class="val-green">TP2 Hit</td><td>2</td><td>Полный выход при достижении TP2</td></tr>
+  <tr><td class="val-green">TP1 Hit</td><td>3</td><td>Частичный выход (tracking)</td></tr>
+  <tr><td class="val-blue">BOS Exit</td><td>4</td><td>bos_bear при LONG или bos_bull при SHORT</td></tr>
+  <tr><td class="val-yellow">Zone Mitigation</td><td>5</td><td>close пересекает midpoint зоны</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Section 6: Risk Management -->
+<section id="risk">
+<div class="container">
+<h2>🛡️ Риск-менеджмент</h2>
+
+<h3>Система управления рисками</h3>
+<div class="card-grid">
+  <div class="card">
+    <div class="card-icon">📐</div>
+    <h4>Kelly Criterion</h4>
+    <p>Оптимальный размер позиции: <code>f = (WR x AvgW - (1-WR) x AvgL) / AvgW</code>. Clamp [0, 1]. Рекомендуется использовать Half-Kelly (f/2) для снижения variance.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">📊</div>
+    <h4>Sharpe Ratio</h4>
+    <p>Annualized: <code>mean(returns) / std(returns) x sqrt(252)</code>. Хороший: &gt; 1.0, Отличный: &gt; 2.0. Показывает доходность на единицу риска.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">📉</div>
+    <h4>Sortino Ratio</h4>
+    <p>Как Sharpe, но учитывает только downside deviation. Более релевантен для торговли: <code>mean(returns) / downside_std x sqrt(252)</code>.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">🎲</div>
+    <h4>Monte Carlo Bootstrap</h4>
+    <p>500 путей x 50 шагов с block bootstrap (block 3-5). 95th percentile maximum drawdown. Показывает worst-case DD с 95% уверенностью.</p>
+  </div>
+</div>
+
+<h3>Параметры риска по умолчанию</h3>
+<table>
+  <tr><th>Параметр</th><th>Значение</th><th>Описание</th></tr>
+  <tr><td>Risk per trade</td><td class="val-yellow">1.0%</td><td>Процент капитала на сделку</td></tr>
+  <tr><td>SL Padding</td><td class="val-red">0.5 x ATR</td><td>Расстояние от границы зоны до SL</td></tr>
+  <tr><td>Min R:R</td><td class="val-green">1.5</td><td>Минимальный Risk:Reward для входа</td></tr>
+  <tr><td>Break-Even Trigger</td><td class="val-blue">1.0R</td><td>SL перемещается на entry после +1R</td></tr>
+  <tr><td>Partial Profit</td><td class="val-purple">1.5R</td><td>Частичная фиксация прибыли</td></tr>
+  <tr><td>Trail Activation</td><td class="val-cyan">2.0R</td><td>Начало трейлинга после +2R</td></tr>
+  <tr><td>Trail Offset</td><td class="val-cyan">1.0R</td><td>Расстояние трейлинга от цены</td></tr>
+  <tr><td>TP1 (Fibonacci)</td><td class="val-green">1.618R</td><td>Первый тейк-профит</td></tr>
+  <tr><td>TP2 (Fibonacci)</td><td class="val-green">2.618R</td><td>Второй тейк-профит (полный выход)</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Section 7: Settings -->
+<section id="settings">
+<div class="container">
+<h2>⚙️ Детальные настройки</h2>
+
+<h3>5-уровневая адаптация таймфреймов</h3>
+<p>Система автоматически определяет текущий таймфрейм и подстраивает 20+ параметров. Ниже приведены ключевые значения для каждого тира:</p>
+
+<table>
+  <tr><th>Параметр</th><th>MICRO (M1-M3)</th><th>SCALP (M5-M15)</th><th>DAY (M30-H1)</th><th>SWING (H2-H4)</th><th>MACRO (D1+)</th></tr>
+  <tr><td>Z-Score min/max</td><td>1.5 / 3.5</td><td>1.5 / 4.0</td><td>0.4 / 5.0</td><td>0.5 / 6.0</td><td>0.6 / 8.0</td></tr>
+  <tr><td>Volume min/max</td><td>1.8 / 8.5</td><td>1.9 / 7.0</td><td>0.8 / 6.0</td><td>0.6 / 5.0</td><td>0.5 / 4.0</td></tr>
+  <tr><td>EMA Length</td><td>50</td><td>48</td><td>50</td><td>100</td><td>200</td></tr>
+  <tr><td>FVG min/max (ATR)</td><td>0.009 / 5.0</td><td>0.05 / 4.0</td><td>0.05 / 5.0</td><td>0.10 / 6.0</td><td>0.20 / 8.0</td></tr>
+  <tr><td>Z-Score Length</td><td>150</td><td>100</td><td>60</td><td>40</td><td>20</td></tr>
+  <tr><td>Volume Length</td><td>60</td><td>50</td><td>30</td><td>20</td><td>10</td></tr>
+  <tr><td>Lower/Upper Shadow</td><td>0.30</td><td>0.25</td><td>0.20</td><td>0.18</td><td>0.15</td></tr>
+  <tr><td>Sweep Lookback</td><td>15</td><td>12</td><td>10</td><td>8</td><td>6</td></tr>
+  <tr><td>FVG RVOL Min</td><td>2.0</td><td>1.5</td><td>1.2</td><td>1.1</td><td>1.0</td></tr>
+  <tr><td>Squeeze Tolerance</td><td>4.0</td><td>3.0</td><td>2.0</td><td>1.5</td><td>1.0</td></tr>
+</table>
+
+<h3>Полный список входных параметров ENGINE</h3>
+
+<h4>🤖 Auto-Tuner и логика</h4>
+<table>
+  <tr><th>Параметр</th><th>Тип</th><th>Дефолт</th><th>Диапазон</th><th>Описание</th></tr>
+  <tr><td>tuning_mode</td><td>dropdown</td><td>Auto-Adaptive</td><td>Auto/Manual</td><td>Автоматическая или ручная настройка</td></tr>
+  <tr><td>hist_mode</td><td>dropdown</td><td>Auto-Scale</td><td>Auto/Fixed</td><td>Режим исторической глубины</td></tr>
+  <tr><td>inp_hist_bars</td><td>int</td><td>4800</td><td>500-4999</td><td>Глубина истории (баров)</td></tr>
+</table>
+
+<h4>⭐ Динамический скоринг</h4>
+<table>
+  <tr><th>Параметр</th><th>Дефолт</th><th>Диапазон</th><th>Описание</th></tr>
+  <tr><td>use_score</td><td>true</td><td>bool</td><td>Включить фильтрацию по скору</td></tr>
+  <tr><td>min_score_gate</td><td class="val-yellow">45</td><td>0-150</td><td>Минимальный скор для активной зоны</td></tr>
+  <tr><td>w_zscore</td><td>25.0</td><td>0-100</td><td>Вес Z-Score компоненты</td></tr>
+  <tr><td>w_vol</td><td>15.0</td><td>0-100</td><td>Вес Volume компоненты</td></tr>
+  <tr><td>w_trend</td><td>15.0</td><td>0-100</td><td>Вес Trend Alignment</td></tr>
+  <tr><td>w_sweep</td><td>15.0</td><td>0-100</td><td>Вес Sweep/Liquidity</td></tr>
+  <tr><td>w_eff</td><td>15.0</td><td>0-100</td><td>Вес Efficiency (FER)</td></tr>
+  <tr><td>w_bonus</td><td>15.0</td><td>0-100</td><td>Вес PA Patterns</td></tr>
+</table>
+
+<h4>🌐 Структура и тренд</h4>
+<table>
+  <tr><th>Параметр</th><th>Дефолт</th><th>Описание</th></tr>
+  <tr><td>use_auto_htf</td><td>true</td><td>Авто выбор HTF</td></tr>
+  <tr><td>man_htf</td><td>"60"</td><td>Ручной HTF override</td></tr>
+  <tr><td>inp_struc_major</td><td>200</td><td>Окно Major BOS (баров)</td></tr>
+  <tr><td>use_trend</td><td>true</td><td>EMA trend фильтр</td></tr>
+  <tr><td>inp_ema_len</td><td>200</td><td>Период EMA</td></tr>
+</table>
+
+<h4>🏛️ SMC Engine</h4>
+<table>
+  <tr><th>Параметр</th><th>Дефолт</th><th>Описание</th></tr>
+  <tr><td>use_bb</td><td>true</td><td>Breaker Blocks включены</td></tr>
+  <tr><td>bb_max_breaks</td><td>2</td><td>Макс. пробоев до деактивации BB</td></tr>
+  <tr><td>use_vol_flt</td><td>true</td><td>Volume фильтрация зон</td></tr>
+  <tr><td>inp_fvg_min</td><td>0.0001</td><td>Мин. размер FVG (ATR)</td></tr>
+  <tr><td>inp_fvg_max</td><td>6.0</td><td>Макс. размер FVG (ATR)</td></tr>
+  <tr><td>req_fvg</td><td>false</td><td>Строгое требование FVG</td></tr>
+  <tr><td>inp_fvg_lookback</td><td>7</td><td>Окно поиска FVG (свечей)</td></tr>
+  <tr><td>inp_mom_rvol</td><td>2.0</td><td>Порог RVOL для импульса</td></tr>
+</table>
+
+<h4>🎯 Фильтры входа</h4>
+<table>
+  <tr><th>Параметр</th><th>Дефолт</th><th>Описание</th></tr>
+  <tr><td>entry_mode</td><td>Touch (Limit)</td><td>Режим входа</td></tr>
+  <tr><td>min_confluence</td><td>2</td><td>Мин. confluence факторов</td></tr>
+  <tr><td>inp_min_pinbars</td><td>2</td><td>Мин. pin-bars для подтверждения</td></tr>
+  <tr><td>inp_pin_ratio</td><td>2.0</td><td>Мин. tail/body ratio pin-bar</td></tr>
+  <tr><td>inp_rspike_rvol</td><td>3.0</td><td>RVOL для reverse spike</td></tr>
+  <tr><td>inp_rsi_ob/os</td><td>75 / 25</td><td>RSI overbought/oversold</td></tr>
+  <tr><td>inp_sfp_lookback</td><td>30</td><td>Lookback для SFP detection</td></tr>
+</table>
+
+<h4>⚖️ Риск и управление</h4>
+<table>
+  <tr><th>Параметр</th><th>Дефолт</th><th>Описание</th></tr>
+  <tr><td>inp_r_val</td><td>1.0%</td><td>Риск на сделку</td></tr>
+  <tr><td>atr_len</td><td>14</td><td>Период ATR</td></tr>
+  <tr><td>sl_pad</td><td>0.5</td><td>SL padding (ATR)</td></tr>
+  <tr><td>target_mode</td><td>Fibonacci Extensions</td><td>Режим TP</td></tr>
+  <tr><td>fib_tp1</td><td>1.618</td><td>TP1 Fibonacci multiple</td></tr>
+  <tr><td>fib_tp2</td><td>2.618</td><td>TP2 Fibonacci multiple</td></tr>
+  <tr><td>inp_min_rr</td><td>1.5</td><td>Минимальный R:R</td></tr>
+  <tr><td>inp_be_trig</td><td>1.0</td><td>Break-even trigger (R)</td></tr>
+  <tr><td>use_trail</td><td>true</td><td>Trailing stop</td></tr>
+  <tr><td>tr_act / tr_off</td><td>2.0 / 1.0</td><td>Trail activation / offset (R)</td></tr>
+</table>
+
+<h4>🧠 Smart Pivot Math</h4>
+<table>
+  <tr><th>Параметр</th><th>Дефолт</th><th>Описание</th></tr>
+  <tr><td>use_smart_piv</td><td>true</td><td>Расширенный пивотный анализ</td></tr>
+  <tr><td>min_piv_qual</td><td>40.0</td><td>Мин. качество пивота (0-100)</td></tr>
+  <tr><td>w_curve / w_piv_vol / w_isolation / w_fractal</td><td>30 / 25 / 25 / 50</td><td>Веса компонент пивота</td></tr>
+  <tr><td>inp_wick_rat</td><td>2.0</td><td>Мин. wick ratio</td></tr>
+  <tr><td>inp_cluster_tol</td><td>1.0</td><td>Допуск кластеризации (ATR)</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Section 8: Recommendations -->
+<section id="recommendations">
+<div class="container">
+<h2>💰 Рекомендации по максимально прибыльным настройкам</h2>
+
+<div class="alert alert-warn">
+  <strong>Дисклеймер:</strong> Все рекомендации основаны на анализе исторических данных криптовалютных фьючерсов OKX. Прошлые результаты не гарантируют будущую прибыльность. Всегда тестируйте на демо-счёте перед торговлей реальными средствами.
+</div>
+
+<h3>Общие принципы настройки</h3>
+<ul>
+  <li><strong>Auto-Adaptive режим</strong> — всегда используйте по умолчанию, он автоматически подстраивает 20+ параметров под текущий TF</li>
+  <li><strong>min_score_gate = 45-60</strong> — повышение порога скора снижает количество сделок, но увеличивает win rate</li>
+  <li><strong>min_confluence = 2-3</strong> — 2 для скальпинга, 3 для свинг-трейдинга</li>
+  <li><strong>req_fvg = false</strong> — не требуйте FVG строго, он уже учитывается как бонус/штраф</li>
+  <li><strong>use_bb = true</strong> — Breaker Blocks критически важны для определения смены тренда</li>
+</ul>
+
+<h3>Рекомендации по таймфреймам</h3>
+
+<div class="rec-panel rec-bull">
+<div class="rec-header">📊 Скальпинг (M1 — M15) | Рекомендованные пары: BTC/USDT, SOL/USDT, ETH/USDT</div>
+<div class="rec-body">
+<table>
+  <tr><th>Параметр</th><th>Значение</th><th>Почему</th></tr>
+  <tr><td>entry_mode</td><td class="val-green">Touch (Limit)</td><td>Максимальная точность входа на коротких TF</td></tr>
+  <tr><td>min_score_gate</td><td class="val-yellow">50</td><td>Чуть выше дефолта — фильтрует шум M1-M5</td></tr>
+  <tr><td>min_confluence</td><td class="val-cyan">2</td><td>Два фактора достаточно для быстрых сделок</td></tr>
+  <tr><td>inp_min_rr</td><td class="val-green">1.5</td><td>Стандартный R:R для скальпинга</td></tr>
+  <tr><td>fib_tp1 / fib_tp2</td><td class="val-green">1.618 / 2.618</td><td>Fibonacci extensions для точных TP</td></tr>
+  <tr><td>sl_pad</td><td class="val-red">0.3</td><td>Узкий SL для скальпинга (меньше ATR)</td></tr>
+  <tr><td>inp_be_trig</td><td class="val-blue">0.8</td><td>Быстрый break-even на коротких TF</td></tr>
+  <tr><td>use_pin</td><td>true</td><td>Pin bars критичны для подтверждения</td></tr>
+  <tr><td>inp_min_pinbars</td><td>1</td><td>Одного pin bar достаточно на M1-M5</td></tr>
+  <tr><td>use_rsi</td><td>true</td><td>Фильтрация перекупленности/перепроданности</td></tr>
+  <tr><td>inp_rsi_len</td><td>14</td><td>Короткий RSI для быстрой реакции</td></tr>
+  <tr><td>use_adx</td><td>true</td><td>Фильтр флэта — не торговать в боковике</td></tr>
+  <tr><td>Risk per trade</td><td class="val-yellow">0.5-1.0%</td><td>Маленький риск при высокой частоте</td></tr>
+</table>
+<div class="alert alert-success">
+  <strong>Совет для скальпинга:</strong> Торгуйте только в Kill Zones (London 10:00-18:30 UTC, NY 15:30-22:00 UTC). В эти периоды объём максимален, зоны наиболее надёжны. Избегайте азиатской сессии на M1-M5.
+</div>
+</div>
+</div>
+
+<div class="rec-panel rec-bull">
+<div class="rec-header">📊 Дейтрейдинг (M30 — H1) | Рекомендованные пары: BTC/USDT, ETH/USDT, BNB/USDT</div>
+<div class="rec-body">
+<table>
+  <tr><th>Параметр</th><th>Значение</th><th>Почему</th></tr>
+  <tr><td>entry_mode</td><td class="val-green">Touch (Limit)</td><td>Лучший R:R при входе от края зоны</td></tr>
+  <tr><td>min_score_gate</td><td class="val-yellow">55</td><td>Повышенный фильтр для quality trades</td></tr>
+  <tr><td>min_confluence</td><td class="val-cyan">2</td><td>Два фактора для баланса частоты и качества</td></tr>
+  <tr><td>inp_min_rr</td><td class="val-green">2.0</td><td>Более высокий R:R для дневных сделок</td></tr>
+  <tr><td>fib_tp1 / fib_tp2</td><td class="val-green">1.618 / 3.0</td><td>Расширенный TP2 для дневного движения</td></tr>
+  <tr><td>sl_pad</td><td class="val-red">0.5</td><td>Стандартный SL padding</td></tr>
+  <tr><td>inp_be_trig</td><td class="val-blue">1.0</td><td>Break-even на +1R (стандарт)</td></tr>
+  <tr><td>use_trail</td><td>true</td><td>Trailing для захвата трендового движения</td></tr>
+  <tr><td>tr_act / tr_off</td><td>2.0 / 1.0</td><td>Начало трейла на +2R</td></tr>
+  <tr><td>Risk per trade</td><td class="val-yellow">1.0%</td><td>Стандартный риск для дейтрейдинга</td></tr>
+</table>
+<div class="alert alert-success">
+  <strong>Совет:</strong> На H1 обращайте внимание на дашборд метрику "Market Regime". Торгуйте зоны BEST и STRONG в Trending режиме, а в Ranging используйте только BEST зоны с confluence >= 3.
+</div>
+</div>
+</div>
+
+<div class="rec-panel rec-bear">
+<div class="rec-header">📊 Свинг-трейдинг (H4 — D1) | Рекомендованные пары: BTC/USDT, ZEC/USDT, SOL/USDT</div>
+<div class="rec-body">
+<table>
+  <tr><th>Параметр</th><th>Значение</th><th>Почему</th></tr>
+  <tr><td>entry_mode</td><td class="val-blue">Candle Close</td><td>Более надёжное подтверждение на H4-D1</td></tr>
+  <tr><td>min_score_gate</td><td class="val-yellow">60</td><td>Только высококачественные зоны</td></tr>
+  <tr><td>min_confluence</td><td class="val-cyan">3</td><td>Три фактора для свинговой уверенности</td></tr>
+  <tr><td>inp_min_rr</td><td class="val-green">2.5</td><td>Высокий R:R для multi-day trades</td></tr>
+  <tr><td>fib_tp1 / fib_tp2</td><td class="val-green">2.0 / 3.618</td><td>Расширенные TP для свинг-движений</td></tr>
+  <tr><td>sl_pad</td><td class="val-red">0.7</td><td>Шире SL для volatile swing moves</td></tr>
+  <tr><td>inp_be_trig</td><td class="val-blue">1.5</td><td>Не спешить с BE на swing</td></tr>
+  <tr><td>use_major_bos</td><td>true</td><td>Major structure подтверждение важно</td></tr>
+  <tr><td>use_mss_confirm</td><td>true</td><td>MSS для надёжности</td></tr>
+  <tr><td>Risk per trade</td><td class="val-yellow">1.0-2.0%</td><td>Повышенный риск при меньшей частоте</td></tr>
+</table>
+<div class="alert alert-success">
+  <strong>Совет для ZEC/USDT:</strong> ZEC крайне волатилен. Используйте <code>inp_min_rr = 3.0</code>, <code>sl_pad = 1.0</code>, <code>min_score_gate = 70</code>. Торгуйте только BEST зоны с BOS подтверждением.
+</div>
+</div>
+</div>
+
+<h3>Рекомендации по весам скоринга для разных стилей</h3>
+<table>
+  <tr><th>Компонент</th><th>Скальпинг</th><th>Дейтрейдинг</th><th>Свинг</th><th>Описание</th></tr>
+  <tr><td>Z-Score</td><td class="val-green">30</td><td class="val-blue">25</td><td class="val-purple">20</td><td>На скальпинге статистические аномалии критичнее</td></tr>
+  <tr><td>Volume</td><td class="val-green">20</td><td class="val-blue">15</td><td class="val-purple">10</td><td>Объём более значим на коротких TF</td></tr>
+  <tr><td>Trend</td><td class="val-green">10</td><td class="val-blue">15</td><td class="val-purple">25</td><td>Тренд важнее на длинных TF</td></tr>
+  <tr><td>Sweep</td><td class="val-green">15</td><td class="val-blue">15</td><td class="val-purple">15</td><td>Одинаково важен на всех TF</td></tr>
+  <tr><td>Efficiency</td><td class="val-green">15</td><td class="val-blue">15</td><td class="val-purple">15</td><td>Одинаково важен на всех TF</td></tr>
+  <tr><td>PA Bonus</td><td class="val-green">10</td><td class="val-blue">15</td><td class="val-purple">15</td><td>Паттерны надёжнее на длинных TF</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Section 9: Trading Pairs -->
+<section id="pairs">
+<div class="container">
+<h2>📈 Торговые пары — OKX Perpetual Futures</h2>
+
+<p>Детальный анализ и рекомендации для каждой из 5 основных криптовалютных фьючерсных пар на бирже OKX.</p>
+
+<div class="alert alert-info">
+  <strong>Биржа OKX:</strong> Все рекомендации для OKX Perpetual Futures (бессрочные фьючерсы). Funding rate каждые 8 часов (00:00, 08:00, 16:00 UTC). Максимальное плечо: до 125x (BTC), до 75x (altcoins). Рекомендуемое плечо: 5-20x.
+</div>
+
+<!-- BTC/USDT -->
+<div class="rec-panel rec-bull">
+<div class="rec-header">₿ BTC/USDT Perpetual — Эталонная пара</div>
+<div class="rec-body">
+<div class="metrics">
+  <div class="metric"><div class="value val-cyan">24/7</div><div class="label">Торговля</div></div>
+  <div class="metric"><div class="value val-green">125x</div><div class="label">Макс. плечо</div></div>
+  <div class="metric"><div class="value val-yellow">Высокая</div><div class="label">Ликвидность</div></div>
+  <div class="metric"><div class="value val-blue">Средняя</div><div class="label">Волатильность</div></div>
+</div>
+
+<h4>Характеристики BTC/USDT</h4>
+<ul>
+  <li><strong>Максимальная ликвидность</strong> — лучший спред, минимальное проскальзывание, зоны наиболее респектабельны</li>
+  <li><strong>Институциональная активность</strong> — крупные игроки уважают технические уровни, OB/BB работают лучше всего</li>
+  <li><strong>Корреляция с рынком</strong> — BTC задаёт тренд для всех altcoins, торговля по тренду наиболее прибыльна</li>
+  <li><strong>Funding rate</strong> — регулярно положительный в бычьем рынке (лонги платят шортам), учитывайте при свинг-позициях</li>
+</ul>
+
+<h4>Оптимальные настройки по таймфреймам</h4>
+<table>
+  <tr><th>TF</th><th>Score Gate</th><th>Confluence</th><th>R:R Min</th><th>SL Pad</th><th>TP1/TP2</th><th>Entry Mode</th><th>Плечо</th></tr>
+  <tr class="profit-high"><td class="val-green">M5</td><td>50</td><td>2</td><td>1.5</td><td>0.3</td><td>1.618 / 2.618</td><td>Touch</td><td>10-15x</td></tr>
+  <tr class="profit-high"><td class="val-green">M15</td><td>50</td><td>2</td><td>1.5</td><td>0.4</td><td>1.618 / 2.618</td><td>Touch</td><td>10-15x</td></tr>
+  <tr class="profit-med"><td class="val-blue">H1</td><td>55</td><td>2</td><td>2.0</td><td>0.5</td><td>1.618 / 3.0</td><td>Touch</td><td>7-10x</td></tr>
+  <tr><td class="val-purple">H4</td><td>60</td><td>3</td><td>2.5</td><td>0.7</td><td>2.0 / 3.618</td><td>Candle Close</td><td>5-7x</td></tr>
+  <tr><td>D1</td><td>65</td><td>3</td><td>3.0</td><td>1.0</td><td>2.618 / 4.236</td><td>ChoCh</td><td>3-5x</td></tr>
+</table>
+
+<div class="alert alert-success">
+  <strong>Лучшая стратегия BTC/USDT:</strong> M15 + Touch mode + Score Gate 50 + Confluence 2. Торгуйте BEST и STRONG зоны в направлении HTF тренда. При Hurst &gt; 0.55 (trending) — повышайте размер позиции. Ожидаемый WR: 55-65%, средний R:R: 1.8-2.5.
+</div>
+</div>
+</div>
+
+<!-- SOL/USDT -->
+<div class="rec-panel rec-bull">
+<div class="rec-header">◎ SOL/USDT Perpetual — Высокая волатильность, отличные зоны</div>
+<div class="rec-body">
+<div class="metrics">
+  <div class="metric"><div class="value val-cyan">24/7</div><div class="label">Торговля</div></div>
+  <div class="metric"><div class="value val-green">75x</div><div class="label">Макс. плечо</div></div>
+  <div class="metric"><div class="value val-yellow">Высокая</div><div class="label">Ликвидность</div></div>
+  <div class="metric"><div class="value val-red">Высокая</div><div class="label">Волатильность</div></div>
+</div>
+
+<h4>Характеристики SOL/USDT</h4>
+<ul>
+  <li><strong>Высокая волатильность</strong> — большие движения создают чёткие зоны, но SL должен быть шире</li>
+  <li><strong>Сильная корреляция с BTC</strong> — но с бОльшей амплитудой (beta &gt; 1.0)</li>
+  <li><strong>Частые sweep ликвидности</strong> — SOL часто «охотит» стопы перед разворотом, SFP очень эффективен</li>
+  <li><strong>Экосистемный риск</strong> — новости Solana экосистемы влияют сильнее чем технический анализ</li>
+</ul>
+
+<h4>Оптимальные настройки</h4>
+<table>
+  <tr><th>TF</th><th>Score Gate</th><th>Confluence</th><th>R:R Min</th><th>SL Pad</th><th>TP1/TP2</th><th>Entry Mode</th><th>Плечо</th></tr>
+  <tr class="profit-high"><td class="val-green">M5</td><td>55</td><td>2</td><td>1.5</td><td>0.4</td><td>1.618 / 2.618</td><td>Touch</td><td>7-10x</td></tr>
+  <tr class="profit-high"><td class="val-green">M15</td><td>55</td><td>2</td><td>2.0</td><td>0.5</td><td>2.0 / 3.0</td><td>Touch</td><td>7-10x</td></tr>
+  <tr class="profit-med"><td class="val-blue">H1</td><td>60</td><td>2</td><td>2.0</td><td>0.6</td><td>2.0 / 3.618</td><td>Touch</td><td>5-7x</td></tr>
+  <tr><td class="val-purple">H4</td><td>65</td><td>3</td><td>2.5</td><td>0.8</td><td>2.618 / 4.236</td><td>Candle Close</td><td>3-5x</td></tr>
+</table>
+
+<div class="alert alert-success">
+  <strong>Лучшая стратегия SOL/USDT:</strong> M15 + Touch mode + Score Gate 55 + use_sfp = true. SOL часто даёт sweep + rejection — идеальная комбинация для системы. Используйте <code>inp_sweep_liq_bonus = 20</code> для повышения бонуса sweep.
+</div>
+</div>
+</div>
+
+<!-- BNB/USDT -->
+<div class="rec-panel rec-bull">
+<div class="rec-header">🔶 BNB/USDT Perpetual — Стабильность и предсказуемость</div>
+<div class="rec-body">
+<div class="metrics">
+  <div class="metric"><div class="value val-cyan">24/7</div><div class="label">Торговля</div></div>
+  <div class="metric"><div class="value val-green">75x</div><div class="label">Макс. плечо</div></div>
+  <div class="metric"><div class="value val-yellow">Средняя</div><div class="label">Ликвидность</div></div>
+  <div class="metric"><div class="value val-green">Средняя</div><div class="label">Волатильность</div></div>
+</div>
+
+<h4>Характеристики BNB/USDT</h4>
+<ul>
+  <li><strong>Средняя волатильность</strong> — BNB более стабилен чем большинство altcoins благодаря утилитарности (Binance ecosystem)</li>
+  <li><strong>Предсказуемые зоны</strong> — OB работают очень хорошо, зоны респектабельны благодаря институциональным участникам</li>
+  <li><strong>Квартальные burns</strong> — сжигание токенов влияет на среднесрочный тренд</li>
+  <li><strong>Регуляторный риск</strong> — новости о Binance могут вызвать резкие движения</li>
+</ul>
+
+<h4>Оптимальные настройки</h4>
+<table>
+  <tr><th>TF</th><th>Score Gate</th><th>Confluence</th><th>R:R Min</th><th>SL Pad</th><th>Entry Mode</th><th>Плечо</th></tr>
+  <tr class="profit-high"><td class="val-green">M15</td><td>50</td><td>2</td><td>1.5</td><td>0.4</td><td>Touch</td><td>10-15x</td></tr>
+  <tr class="profit-high"><td class="val-green">H1</td><td>55</td><td>2</td><td>2.0</td><td>0.5</td><td>Touch</td><td>7-10x</td></tr>
+  <tr class="profit-med"><td class="val-blue">H4</td><td>60</td><td>2</td><td>2.0</td><td>0.6</td><td>Candle Close</td><td>5-7x</td></tr>
+</table>
+
+<div class="alert alert-success">
+  <strong>Лучшая стратегия BNB/USDT:</strong> H1 + Touch mode — оптимальный баланс частоты и качества. BNB хорошо респектирует зоны на H1. Рекомендуется <code>use_pd = true</code> (Premium/Discount) — BNB часто возвращается к equilibrium.
+</div>
+</div>
+</div>
+
+<!-- ZEC/USDT -->
+<div class="rec-panel rec-bear">
+<div class="rec-header">🔒 ZEC/USDT Perpetual — Экстремальная волатильность</div>
+<div class="rec-body">
+<div class="metrics">
+  <div class="metric"><div class="value val-cyan">24/7</div><div class="label">Торговля</div></div>
+  <div class="metric"><div class="value val-green">50x</div><div class="label">Макс. плечо</div></div>
+  <div class="metric"><div class="value val-red">Низкая</div><div class="label">Ликвидность</div></div>
+  <div class="metric"><div class="value val-red">Очень высокая</div><div class="label">Волатильность</div></div>
+</div>
+
+<h4>Характеристики ZEC/USDT</h4>
+<ul>
+  <li><strong>Экстремальная волатильность</strong> — резкие движения 5-15% за день — обычное явление</li>
+  <li><strong>Низкая ликвидность</strong> — широкие спреды, частое проскальзывание, зоны менее надёжны</li>
+  <li><strong>Манипуляции</strong> — из-за низкой ликвидности часты ложные пробои и manipulation wicks</li>
+  <li><strong>Privacy coin риск</strong> — регуляторные новости критически влияют на цену</li>
+</ul>
+
+<h4>Оптимальные настройки</h4>
+<table>
+  <tr><th>TF</th><th>Score Gate</th><th>Confluence</th><th>R:R Min</th><th>SL Pad</th><th>Entry Mode</th><th>Плечо</th></tr>
+  <tr><td class="val-blue">H1</td><td class="val-red">70</td><td>3</td><td>2.5</td><td>1.0</td><td>Candle Close</td><td>3-5x</td></tr>
+  <tr class="profit-med"><td class="val-purple">H4</td><td class="val-red">75</td><td>3</td><td>3.0</td><td>1.2</td><td>Candle Close</td><td>2-3x</td></tr>
+  <tr><td>D1</td><td class="val-red">80</td><td>3</td><td>3.5</td><td>1.5</td><td>ChoCh</td><td>2x</td></tr>
+</table>
+
+<div class="alert alert-danger">
+  <strong>Внимание ZEC/USDT:</strong> Торгуйте ТОЛЬКО на H1+ с BEST зонами! Увеличьте sl_pad до 1.0-1.5 ATR. Используйте <code>min_score_gate = 70-80</code>. Плечо не более 5x. ZEC — для опытных трейдеров.
+</div>
+</div>
+</div>
+
+<!-- ETH/USDT -->
+<div class="rec-panel rec-bull">
+<div class="rec-header">💎 ETH/USDT Perpetual — Баланс ликвидности и волатильности</div>
+<div class="rec-body">
+<div class="metrics">
+  <div class="metric"><div class="value val-cyan">24/7</div><div class="label">Торговля</div></div>
+  <div class="metric"><div class="value val-green">100x</div><div class="label">Макс. плечо</div></div>
+  <div class="metric"><div class="value val-yellow">Высокая</div><div class="label">Ликвидность</div></div>
+  <div class="metric"><div class="value val-yellow">Средне-высокая</div><div class="label">Волатильность</div></div>
+</div>
+
+<h4>Характеристики ETH/USDT</h4>
+<ul>
+  <li><strong>Вторая по ликвидности</strong> — отличный спред, надёжные зоны, хорошая для всех стилей</li>
+  <li><strong>Сильные зоны поддержки</strong> — ETH хорошо респектирует OB, особенно на H1-H4</li>
+  <li><strong>DeFi/L2 новости</strong> — экосистемные новости создают дополнительную волатильность</li>
+  <li><strong>Высокий beta к BTC</strong> — но часто показывает ETH/BTC дивергенции</li>
+</ul>
+
+<h4>Оптимальные настройки</h4>
+<table>
+  <tr><th>TF</th><th>Score Gate</th><th>Confluence</th><th>R:R Min</th><th>SL Pad</th><th>TP1/TP2</th><th>Entry Mode</th><th>Плечо</th></tr>
+  <tr class="profit-high"><td class="val-green">M5</td><td>50</td><td>2</td><td>1.5</td><td>0.3</td><td>1.618 / 2.618</td><td>Touch</td><td>10-15x</td></tr>
+  <tr class="profit-high"><td class="val-green">M15</td><td>50</td><td>2</td><td>1.5</td><td>0.4</td><td>1.618 / 2.618</td><td>Touch</td><td>10-15x</td></tr>
+  <tr class="profit-high"><td class="val-blue">H1</td><td>55</td><td>2</td><td>2.0</td><td>0.5</td><td>2.0 / 3.0</td><td>Touch</td><td>7-10x</td></tr>
+  <tr class="profit-med"><td class="val-purple">H4</td><td>60</td><td>3</td><td>2.5</td><td>0.7</td><td>2.618 / 3.618</td><td>Candle Close</td><td>5-7x</td></tr>
+</table>
+
+<div class="alert alert-success">
+  <strong>Лучшая стратегия ETH/USDT:</strong> M15-H1 + Touch mode. ETH очень похож на BTC по поведению, но с бОльшими движениями. Используйте те же настройки что для BTC, но увеличьте <code>sl_pad</code> на 0.1. При ETH/BTC ratio в нисходящем тренде — преимущество шортам.
+</div>
+</div>
+</div>
+
+<h3>Сводная таблица рекомендаций</h3>
+<table>
+  <tr><th>Пара</th><th>Лучший TF</th><th>Entry Mode</th><th>Score Gate</th><th>R:R Min</th><th>Плечо</th><th>Сложность</th></tr>
+  <tr class="profit-high"><td class="val-yellow">BTC/USDT</td><td>M15</td><td>Touch</td><td>50</td><td>1.5</td><td>10-15x</td><td class="val-green">Начинающий+</td></tr>
+  <tr class="profit-high"><td class="val-purple">SOL/USDT</td><td>M15</td><td>Touch</td><td>55</td><td>2.0</td><td>7-10x</td><td class="val-blue">Средний</td></tr>
+  <tr class="profit-med"><td class="val-yellow">BNB/USDT</td><td>H1</td><td>Touch</td><td>55</td><td>2.0</td><td>7-10x</td><td class="val-green">Начинающий+</td></tr>
+  <tr><td class="val-red">ZEC/USDT</td><td>H4</td><td>Candle Close</td><td>75</td><td>3.0</td><td>2-3x</td><td class="val-red">Эксперт</td></tr>
+  <tr class="profit-high"><td class="val-blue">ETH/USDT</td><td>M15-H1</td><td>Touch</td><td>50-55</td><td>1.5-2.0</td><td>10-15x</td><td class="val-green">Начинающий+</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Section 10: Dashboard -->
+<section id="dashboard">
+<div class="container">
+<h2>📊 Дашборд VISUAL — Полный гид</h2>
+
+<h3>Структура дашборда (48 строк x 2 колонки)</h3>
+<p>Дашборд VISUAL отображается в правом верхнем углу графика и содержит полную информацию о состоянии системы, рынка и открытых позиций.</p>
+
+<h4>Секция 1: Заголовок и подключение</h4>
+<table>
+  <tr><th>Строка</th><th>Метрика</th><th>Пример</th><th>Значение цветов</th></tr>
+  <tr><td>0</td><td>Статус подключения</td><td>Trading Fluppy (🟢 ENGINE Auto)</td><td>🟢 = подключен, 🔴 = standalone</td></tr>
+</table>
+
+<h4>Секция 2: Анализ тренда</h4>
+<table>
+  <tr><th>Строка</th><th>Метрика</th><th>Что показывает</th><th>Интерпретация</th></tr>
+  <tr><td>1</td><td>Asset Type</td><td>CRYPTO / FUTURES / FOREX</td><td>Автодетекция типа актива</td></tr>
+  <tr><td>2</td><td>HTF Trend</td><td>BULLISH 🟢 / BEARISH 🔴 / FLAT</td><td>Направление старшего таймфрейма (EMA)</td></tr>
+  <tr><td>3</td><td>ITF Trend</td><td>ITF Bull 🟢 / ITF Bear 🔴</td><td>Промежуточный таймфрейм</td></tr>
+  <tr><td>4</td><td>Major BOS</td><td>BULL META 🟢 / BEAR META 🔴</td><td>Major Break of Structure (200 баров)</td></tr>
+  <tr><td>5</td><td>VWAP</td><td>Above 🟢 / Below 🔴</td><td>Позиция цены относительно VWAP</td></tr>
+  <tr><td>6</td><td>Z-Score</td><td>2.35 sigma</td><td>Gold (&gt;max), Lime (&gt;min), White (нормально)</td></tr>
+  <tr><td>7</td><td>RVOL</td><td>3.42x</td><td>Gold (&gt;max), Lime (&gt;1.0), Red (&lt;1.0)</td></tr>
+</table>
+
+<h4>Секция 3: Зоны и стратегия</h4>
+<table>
+  <tr><th>Строка</th><th>Метрика</th><th>Интерпретация</th></tr>
+  <tr><td>8</td><td>Hist Depth</td><td>Глубина исторических данных (баров)</td></tr>
+  <tr><td>9</td><td>Active Zones</td><td>Sup:50 Res:45 BB:10 RZ:5 — количество активных зон по типам</td></tr>
+  <tr><td>10</td><td>Total Trades</td><td>Количество симулированных сделок</td></tr>
+  <tr><td>11</td><td>Win Rate</td><td>Lime (&gt;50%), Orange (&lt;50%) — процент выигрышных сделок</td></tr>
+  <tr><td>12</td><td>Profit Factor</td><td>Lime (&gt;1.5), Red (&lt;1.0) — отношение прибыли к убыткам</td></tr>
+  <tr><td>13</td><td>Current DD</td><td>Lime (&lt;10%), Orange (10-30%), Red (&gt;30%) — текущая просадка</td></tr>
+  <tr><td>14</td><td>Equity</td><td>Текущий баланс симулированного портфеля</td></tr>
+</table>
+
+<h4>Секция 4: Рыночный контекст</h4>
+<table>
+  <tr><th>Строка</th><th>Метрика</th><th>Как использовать</th></tr>
+  <tr><td>15</td><td>Active Session</td><td>Asia / London / NY / Overlap / Quiet — торгуйте в London/NY</td></tr>
+  <tr><td>16</td><td>To Bull Break</td><td>Расстояние до бычьего пробоя (в тиках). "BREAK!" = пробой произошёл</td></tr>
+  <tr><td>17</td><td>To Bear Break</td><td>Расстояние до медвежьего пробоя</td></tr>
+  <tr><td>18</td><td>Min Confluence</td><td>Требуемое количество confluence факторов</td></tr>
+  <tr><td>20</td><td>Stochastic P</td><td>Вероятность отскока от ближайшей зоны (%) — "&gt;60% = высокая вероятность"</td></tr>
+</table>
+
+<h4>Секция 5: Расширенная аналитика</h4>
+<table>
+  <tr><th>Строка</th><th>Метрика</th><th>Как использовать</th></tr>
+  <tr><td>28</td><td>Kelly F</td><td>Оптимальный размер позиции. Lime (&gt;0.2 = хорошо), Red (0 = не торговать)</td></tr>
+  <tr><td>29</td><td>Sharpe / Sortino</td><td>Lime (&gt;1.0 = хорошая система). Sortino лучше учитывает downside</td></tr>
+  <tr><td>30</td><td>MC DD95%</td><td>Worst-case просадка. Red (&gt;30% = опасно) — снизить риск!</td></tr>
+  <tr><td>32</td><td class="val-cyan">Market Regime</td><td>Trending ↑/↓ = торговать по тренду, Ranging = fade, Volatile = ждать</td></tr>
+  <tr><td>33</td><td class="val-cyan">Hurst Exp</td><td>&gt;0.55 = trending (торговать), 0.45-0.55 = random (осторожно), &lt;0.45 = mean-revert</td></tr>
+  <tr><td>34</td><td class="val-cyan">CVD Divergence</td><td>Bull Div 🟢 = скрытое покупательное давление, Bear Div 🔴 = скрытое давление продаж</td></tr>
+  <tr><td>35</td><td class="val-yellow">Top Zone</td><td>BEST @ price (score pts) distance — ближайшая лучшая зона</td></tr>
+  <tr><td>36</td><td>POC (Point of Control)</td><td>Уровень максимального объёма — сильный магнит для цены</td></tr>
+  <tr><td>37</td><td>Microstructure</td><td>VCP/Squeeze/Absorption — сигналы сжатия и накопления</td></tr>
+</table>
+
+<h3>Entry/Exit Hint Labels</h3>
+<div class="two-col">
+<div>
+<h4>🟢 LONG Entry Label</h4>
+<pre style="border-left: 3px solid var(--accent-green);">
+🟢 ВХОД LONG
+98,500.00
+Tier: BEST (125 pts)
+R:R = 2.45
+SL: 97,800.00
+TP1: 99,632.90
+TP2: 100,333.30
+</pre>
+<p>Появляется под свечой при сигнале входа в LONG. Включает цену входа, тир зоны, скор, R:R и уровни SL/TP.</p>
+</div>
+<div>
+<h4>🔴 SHORT Entry Label</h4>
+<pre style="border-left: 3px solid var(--accent-red);">
+🔴 ВХОД SHORT
+99,200.00
+Tier: STRONG (87 pts)
+R:R = 1.82
+SL: 99,900.00
+TP1: 97,927.40
+TP2: 97,367.40
+</pre>
+<p>Появляется над свечой при сигнале входа в SHORT.</p>
+</div>
+</div>
+
+<h4>Exit Hint — причины выхода</h4>
+<table>
+  <tr><th>Причина</th><th>Символ</th><th>Описание</th></tr>
+  <tr><td class="val-red">SL Hit</td><td>❌ SL Hit</td><td>Стоп-лосс достигнут</td></tr>
+  <tr><td class="val-green">TP2 Hit</td><td>🎯 TP2 Hit</td><td>Второй тейк-профит достигнут (полный выход)</td></tr>
+  <tr><td class="val-green">TP1 Hit</td><td>🎯 TP1 Hit</td><td>Первый тейк-профит (частичный выход)</td></tr>
+  <tr><td class="val-blue">BOS Exit</td><td>BOS ↓ / BOS ↑</td><td>Break of Structure против позиции</td></tr>
+  <tr><td class="val-blue">CHoCH Exit</td><td>CHoCH ↓ / CHoCH ↑</td><td>Change of Character</td></tr>
+  <tr><td class="val-yellow">Trend Exit</td><td>Тренд ↓ / Тренд ↑</td><td>Оба тренда (HTF + ITF) против позиции</td></tr>
+  <tr><td class="val-purple">Volatility</td><td>Волатильность</td><td>Режим рынка стал Volatile (regime == 3)</td></tr>
+</table>
+
+<h3>Equity Curve и Drawdown</h3>
+<p>VISUAL отображает кривую equity и просадку в отдельной панели (display.pane):</p>
+<ul>
+  <li><strong>Equity Curve</strong> (зелёная линия) — рост/падение симулированного портфеля (начальный капитал 1000)</li>
+  <li><strong>Drawdown</strong> (красная заливка) — текущая просадка от пика в %. Цвет: зелёный &lt;10%, оранжевый 10-30%, красный &gt;30%</li>
+</ul>
+
+<h3>Alerts (Уведомления)</h3>
+<table>
+  <tr><th>Alert</th><th>Условие</th><th>Описание</th></tr>
+  <tr><td class="val-cyan">Zone Proximity</td><td>Distance to BEST zone &lt; 1 ATR</td><td>Цена приближается к лучшей зоне</td></tr>
+  <tr><td class="val-purple">CVD Divergence</td><td>cvd_div != 0</td><td>Обнаружена дивергенция кумулятивной дельты</td></tr>
+</table>
+
+</div>
+</section>
+
+<!-- Footer -->
+<section style="padding: 3rem 0; text-align: center; border-top: 1px solid var(--border);">
+<div class="container">
+  <h2 style="display: block; border: none;">🐬 Trading Fluppy</h2>
+  <p>ENGINE V278 + VISUAL | Pine Script v6 | TradingView</p>
+  <p style="color: var(--text-muted); font-size: 0.85rem;">
+    Система создана для профессионального крипто-анализа на бирже OKX.<br>
+    Используйте на свой страх и риск. Всегда тестируйте на демо-счёте перед реальной торговлей.<br>
+    Данная презентация предназначена для ознакомления с архитектурой, настройками и принципами работы системы.
+  </p>
+  <div class="badges" style="margin-top: 1.5rem;">
+    <span class="badge badge-green">BTC/USDT</span>
+    <span class="badge badge-purple">SOL/USDT</span>
+    <span class="badge badge-yellow">BNB/USDT</span>
+    <span class="badge badge-blue">ZEC/USDT</span>
+    <span class="badge badge-green">ETH/USDT</span>
+  </div>
+</div>
+</section>
+
+<a href="#hero" class="scroll-top" id="scrollTop">&#8593;</a>
+
+<script>
+// Tab functionality
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const group = tab.closest('.tabs').parentElement;
+    group.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    group.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Scroll to top button
+const scrollBtn = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => {
+  scrollBtn.classList.toggle('visible', window.scrollY > 500);
+});
+
+// Active nav
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('nav a[href^="#"]');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 100) current = s.id;
+  });
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+});
+</script>
+</body>
+</html>
