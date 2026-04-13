@@ -4550,7 +4550,10 @@ f_merge_nested_zones() =>
                 bool ob_compat = z1.z_type == "OB" and z2.z_type == "OB"
                 bool rz_compat = z1.z_type == "RZ" and z2.z_type == "RZ"
                 bool ob_rz_absorb = (z1.z_type == "OB" and z2.z_type == "RZ") or (z1.z_type == "RZ" and z2.z_type == "OB")
-                bool can_merge = same_dir and (bb_compat or ob_compat or rz_compat or ob_rz_absorb)
+                // V279: New zone types can merge with similar types
+                bool imb_compat = z1.z_type == "IMB" and z2.z_type == "IMB"
+                bool mbr_compat = z1.z_type == "MBR" and z2.z_type == "MBR"
+                bool can_merge = same_dir and (bb_compat or ob_compat or rz_compat or ob_rz_absorb or imb_compat or mbr_compat)
                 if can_merge
                     bool z2_inside_z1 = z2.top <= z1.top and z2.bot >= z1.bot
                     bool z1_inside_z2 = z1.top <= z2.top and z1.bot >= z2.bot
@@ -5894,7 +5897,15 @@ if show_signals and in_window
                 for z in zone_db
                     if z.active and (z.is_bull == _is_long) and z.score > _sig_sc
                         _sig_sc := z.score
-                        _sig_zt := z.z_type == "BB" ? (_is_long ? "BB↑" : "BB↓") : z.z_type == "RZ" ? (_is_long ? "RejZ↑" : "RejZ↓") : (_is_long ? "Sup" : "Res")
+                        // V279: Extended zone type labels for signals
+                        _sig_zt := z.z_type == "BB" ? (_is_long ? "BB↑" : "BB↓") : 
+                                   z.z_type == "RZ" ? (_is_long ? "RejZ↑" : "RejZ↓") : 
+                                   z.z_type == "IMB" ? "IMB" : 
+                                   z.z_type == "ACC" ? "Acc" : 
+                                   z.z_type == "DST" ? "Dst" : 
+                                   z.z_type == "VCP" ? "VCP" : 
+                                   z.z_type == "MBR" ? "MBR" : 
+                                   (_is_long ? "Sup" : "Res")
                 if _sig_sc > 0
                     string te = f_emoji(_sig_sc)
                     string rsi_ctx = _is_long ? (rsi_val <= inp_rsi_os ? " 📉OS" : rsi_val <= 45 ? "" : " ⚠️RSI") : (rsi_val >= inp_rsi_ob ? " 📈OB" : rsi_val >= 55 ? "" : " ⚠️RSI")
@@ -6133,7 +6144,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(278.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(279.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -6229,3 +6240,41 @@ if use_pd
     box.set_right(_pd_bx_l, bar_index)
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
+
+// ── V279: Alert System ────────────────────────────────────────────────────
+// Alerts for zone creation, entry signals, and new zone types
+// Note: alertcondition() does NOT count toward the 64 output slot limit
+
+// Entry signal alerts
+alertcondition(trigger_buy, title="🟢 LONG Signal", message="LONG signal triggered on {{ticker}} {{interval}}")
+alertcondition(trigger_sell, title="🔴 SHORT Signal", message="SHORT signal triggered on {{ticker}} {{interval}}")
+alertcondition(trigger_buy or trigger_sell, title="⚡ Any Trade Signal", message="Trade signal on {{ticker}} {{interval}}")
+
+// High-quality zone alerts (score >= 100)
+bool _alert_best_zone = false
+if barstate.isconfirmed and array.size(zone_db) > 0
+    for z in zone_db
+        if z.active and z.score >= 100 and (bar_index - z.created_at) == 0
+            _alert_best_zone := true
+alertcondition(_alert_best_zone, title="⭐ BEST Zone Created", message="High-quality zone (Score≥100) created on {{ticker}} {{interval}}")
+
+// New zone type alerts
+bool _alert_imb_zone = false
+bool _alert_vcp_zone = false
+bool _alert_acc_zone = false
+bool _alert_mbr_zone = false
+if barstate.isconfirmed and array.size(zone_db) > 0
+    for z in zone_db
+        if z.active and (bar_index - z.created_at) == 0
+            if z.z_type == "IMB"
+                _alert_imb_zone := true
+            if z.z_type == "VCP"
+                _alert_vcp_zone := true
+            if z.z_type == "ACC" or z.z_type == "DST"
+                _alert_acc_zone := true
+            if z.z_type == "MBR"
+                _alert_mbr_zone := true
+alertcondition(_alert_imb_zone, title="⚡ Imbalance Zone", message="Imbalance zone detected on {{ticker}} {{interval}}")
+alertcondition(_alert_vcp_zone, title="🔻 VCP Zone", message="VCP compression zone on {{ticker}} {{interval}}")
+alertcondition(_alert_acc_zone, title="📊 Accumulation/Distribution", message="Wyckoff A/D zone on {{ticker}} {{interval}}")
+alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi-bar rejection on {{ticker}} {{interval}}")
