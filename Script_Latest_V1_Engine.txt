@@ -146,7 +146,7 @@ stoch_min_val = input.int(5,  "Мин. зон для прогноза",      min
 stoch_max_val = input.int(30, "Зон для 100% уверенности",   minval=10, maxval=100, group=group_stoch)
 
 group_sess = "🌍 Global Sessions"
-show_sess  = input.bool(false, "Показывать сессионные боксы", group=group_sess)
+// V280: show_sess input moved to VISUAL
 sess_timezone = input.string("America/New_York", title="Таймзона сессий", options=["America/New_York","Europe/London","Asia/Tokyo","UTC"], group=group_sess)
 sess_asia_t = input.session("1900-0300", "Asia (Tokyo time)", group=group_sess)
 c_asia      = input.color(color.new(color.blue, 90), "Asia Color", group=group_sess)
@@ -318,7 +318,7 @@ show_sniper = input.bool(true,  "Показывать Sniper Price", group=group
 sniper_fit  = input.float(0.15, "Минимальная доля хвоста", minval=0.05, maxval=0.5, step=0.01, group=group_vis)
 sniper_prc  = input.float(0.30, "Процент от хвоста",      minval=0.01, maxval=0.3, step=0.01, group=group_vis)
 debug_mode  = input.bool(false, "Показывать отладку зон", group=group_vis)
-show_signals = input.bool(true, "Показывать сигналы BUY/SELL", group=group_vis)
+// V280: show_signals input moved to VISUAL
 use_zone_age_fade = input.bool(true, "Затухание прозрачности зоны по возрасту", group=group_vis)
 zone_max_age  = input.int(3500, "Макс. возраст зоны до авто-удаления (бары)", minval=20, maxval=4990, group=group_vis)
 
@@ -359,23 +359,7 @@ use_bb_arrow       = input.bool(true,  "Стрелка направления н
 use_fvg_connector  = input.bool(false, "Соединительная линия FVG → Zone", group=group_vis2)
 use_rz_zigzag      = input.bool(true,  "Зигзаг-граница для Rejection Zone", group=group_vis2)
 
-group_tl  = "📐 Trend Lines"
-show_trendlines  = input.bool(true,   "Показывать линии тренда",                  group=group_tl)
-c_tl_bull  = input.color(color.new(color.lime, 20),  "Цвет: восходящий тренд",   group=group_tl)
-c_tl_bear  = input.color(color.new(color.red,  20),  "Цвет: нисходящий тренд",   group=group_tl)
-c_tl_flat  = input.color(color.new(color.gray, 30),  "Цвет: боковой тренд",      group=group_tl)
-tl_width   = input.int(2, "Толщина линии тренда", minval=1, maxval=5,             group=group_tl)
-tl_min_touches = input.int(1, "Количество касаний для подтверждения тренда", minval=1, maxval=10, group=group_tl)
-tl_channel_min_bars = input.int(50, "Минимум баров для канала",  minval=1,  maxval=4500, group=group_tl)
-tl_channel_max_bars = input.int(200, "Максимум баров для канала (Fixed)", minval=1, maxval=4998, group=group_tl)
-tl_lookback_mode    = input.string("Pivot-Adaptive", title="Режим lookback (глубина истории)", options=["Fixed", "Pivot-Adaptive", "ATR-Adaptive", "R²-Adaptive"], group=group_tl)
-tl_atr_constant     = input.float(3000.0, "ATR Constant (ATR-Adaptive)", minval=100, maxval=50000, step=100, group=group_tl)
-tl_r2_max_scan      = input.int(200, "R² макс. сканирование (баров)", minval=30, maxval=500, group=group_tl)
-show_trend_zones     = input.bool(true,   "Наклонные зоны S/R по тренду",         group=group_tl)
-trend_zone_atr_width = input.float(0.5,   "Ширина наклонной зоны (× ATR)",        minval=0.1, maxval=3.0, step=0.1, group=group_tl)
-c_tz_sup             = input.color(color.new(#00C853, 75), "Цвет: наклонная зона поддержки",    group=group_tl)
-c_tz_res             = input.color(color.new(#FF1744, 75), "Цвет: наклонная зона сопротивления", group=group_tl)
-debug_ch_mode        = input.bool(false, "🔍 Отладка каналов тренда (Debug)", group=group_tl)
+// V280: Trend Lines inputs moved to VISUAL to reduce ENGINE token count
 
 
 group_fut = "⚡ Futures Engine"
@@ -383,7 +367,7 @@ use_vwap         = input.bool(true,  "Включить VWAP-фильтр (фью
 use_itf_align    = input.bool(true,  "Требовать ITF-тренд (промежуточный ТФ)", group=group_fut)
 use_mss_confirm  = input.bool(false, "Требовать MSS при входе", group=group_fut)
 min_confluence   = input.int(2, "Мин. факторов подтверждения входа", minval=1, maxval=6, group=group_fut)
-use_label_quality = input.bool(true, "Показывать Score/Tier на BUY/SELL", group=group_fut)
+// V280: use_label_quality input moved to VISUAL
 use_htf_zone_align = input.bool(false,"HTF зона-алайнмент (экспериментально)", group=group_fut)
 use_major_bos    = input.bool(true,  "Major BOS фильтр (для SWING/MACRO)", group=group_fut)
 use_asset_adapt  = input.bool(true,  "Авто-адаптация к типу инструмента (crypto/fut/stock)", group=group_fut)
@@ -732,21 +716,7 @@ else
 // ── ГАРАНТИЯ: p_max_history никогда не превышает MAX_BUFF ─────────────────
 p_max_history := math.min(p_max_history, MAX_BUFF)
 
-var label mode_lbl = na
-if barstate.islast and auto_info
-    if not na(mode_lbl)
-        label.delete(mode_lbl)
-    string itf_str = use_auto_htf ? calc_itf : "—"
-    mode_lbl := label.new(bar_index + 2, high,
-         text = mode_name + " | " + asset_label +
-                (tuning_mode == "Auto-Adaptive" ? " 🔄DYN" : "") +
-                "\nLTF: " + timeframe.period + " | ITF: " + itf_str + " | HTF: " + calc_tf +
-                "\nHist: " + f_ts(p_max_history) + " (" + hist_mode + ")" +
-                "\nPV: " + str.tostring(safe_pv, "#.##") +
-                "\nChLookback: " + tl_lookback_mode +
-                "\nMultiPat: " + f_ts(p_multi_pattern_min),
-         color = color.new(color.blue, 65), textcolor = color.white,
-         style = label.style_label_left, size = size.small)
+// V280: Mode label moved to VISUAL
 
 // ==========================================
 // БЛОК 3: SESSION LOGIC & ADAPTIVE MACRO VOLUME
@@ -768,45 +738,7 @@ bool kz_ny      = f_in_session(sess_ny_t)
 bool kz_overlap = f_in_session(sess_ovrl_t)
 bool in_brokezone = kz_asia or kz_london or kz_ny or kz_overlap
 
-string temp_session = (kz_asia ? "Asia " : "") + (kz_london ? "London " : "") + (kz_ny ? "NY " : "") + (kz_overlap ? "Overlap" : "")
-string current_session = temp_session == "" ? "Quiet" : str.trim(temp_session)
-
-f_draw_session(string sess_spec, color c_sess) =>
-    bool in_sess       = f_in_session(sess_spec)
-    bool prev_in_sess  = bar_index > 0 ? in_sess[1] : false
-    bool session_start = in_sess and not prev_in_sess
-    bool session_end   = not in_sess and prev_in_sess
-    var box   s_box    = na
-    var float s_high   = na
-    var float s_low    = na
-    if session_start
-        s_high := high
-        s_low  := low
-        s_box  := box.new(bar_index, high, bar_index + 1, low, border_color=na, bgcolor=c_sess, xloc=xloc.bar_index)
-    if in_sess
-        s_high := math.max(s_high, high)
-        s_low  := math.min(s_low,  low)
-        if not na(s_box)
-            box.set_top(s_box, s_high)
-            box.set_bottom(s_box, s_low)
-            box.set_right(s_box, bar_index + 1)
-    if session_end and not na(s_box)
-        box.set_right(s_box, bar_index)
-    in_sess
-
-if show_sess
-    f_draw_session(sess_asia_t, c_asia)
-    f_draw_session(sess_lond_t, c_lond)
-    f_draw_session(sess_ny_t,   c_ny)
-    f_draw_session(sess_ovrl_t, c_ovrl)
-
-var label sess_label = na
-if barstate.islast and show_sess and auto_info
-    if not na(sess_label)
-        label.delete(sess_label)
-    color sess_col = kz_overlap ? color.red : kz_ny ? color.purple : kz_london ? color.orange : kz_asia ? color.blue : color.gray
-    sess_label := label.new(bar_index + 5, high, text="Session: " + current_session,
-         color=color.new(sess_col, 70), textcolor=color.white, style=label.style_label_left, size=size.small)
+// V280: Session boxes and session label moved to VISUAL
 
 // ==========================================
 // БЛОК 4: MATH & STATS CORE + TRUE SMC PIVOTS
@@ -1056,649 +988,15 @@ if not na(pl_int)
     struct_l   := pl_int
     struct_l_i := bar_index - _safe_pr
 
-// ── V258: Trend Channel — собственные пивоты (независимые от S/R зон) ────
-int _tl_safe_pl = math.max(1, math.min(tl_channel_min_bars, MAX_OFFSET - 1))
-int _tl_safe_pr = math.max(3, math.min(50, MAX_OFFSET - _tl_safe_pl))
-int _tl_max_off = math.min(tl_channel_max_bars, MAX_OFFSET)  // будет пересчитан ниже если режим не Fixed
-float _tl_body_high = math.max(high, low)
-float _tl_body_low  = math.min(high, low)
-max_bars_back(_tl_body_high, MAX_BUFF)
-max_bars_back(_tl_body_low,  MAX_BUFF)
-float _tl_ph_raw = ta.pivothigh(_tl_body_high, _tl_safe_pl, _tl_safe_pr)
-float _tl_pl_raw = ta.pivotlow(_tl_body_low,   _tl_safe_pl, _tl_safe_pr)
-max_bars_back(_tl_ph_raw, MAX_BUFF)
-max_bars_back(_tl_pl_raw, MAX_BUFF)
-float tl_ph = not na(_tl_ph_raw) ? _tl_ph_raw : na
-float tl_pl = not na(_tl_pl_raw) ? _tl_pl_raw : na
-max_bars_back(tl_ph, MAX_BUFF)
-max_bars_back(tl_pl, MAX_BUFF)
-
-var float tl_ch_struct_h   = na
-var float tl_ch_struct_l   = na
-var int   tl_ch_struct_h_i = na
-var int   tl_ch_struct_l_i = na
-max_bars_back(tl_ch_struct_h,   BUF_FLAGS)
-max_bars_back(tl_ch_struct_l,   BUF_FLAGS)
-max_bars_back(tl_ch_struct_h_i, BUF_FLAGS)
-max_bars_back(tl_ch_struct_l_i, BUF_FLAGS)
-var float tl_ch_wick_h   = na   // High (фитиль) на баре пивот-хай
-var float tl_ch_wick_l   = na   // Low  (фитиль) на баре пивот-лоу
-max_bars_back(tl_ch_wick_h, BUF_FLAGS)
-max_bars_back(tl_ch_wick_l, BUF_FLAGS)
-if not na(tl_ph)
-    tl_ch_struct_h   := tl_ph
-    tl_ch_struct_h_i := bar_index - _tl_safe_pr
-    tl_ch_wick_h     := high[_tl_safe_pr]
-if not na(tl_pl)
-    tl_ch_struct_l   := tl_pl
-    tl_ch_struct_l_i := bar_index - _tl_safe_pr
-    tl_ch_wick_l     := low[_tl_safe_pr]
-
-// Переменные для хранения предыдущих свинг-точек (для построения линий тренда)
-var float prev_struct_h   = na
-var int   prev_struct_h_i = na
-var float prev_struct_l   = na
-var int   prev_struct_l_i = na
-var float prev_wick_h     = na   // High (фитиль) предыдущего пивот-хай
-var float prev_wick_l     = na   // Low  (фитиль) предыдущего пивот-лоу
-max_bars_back(prev_struct_h,   BUF_FLAGS)
-max_bars_back(prev_struct_h_i, BUF_FLAGS)
-max_bars_back(prev_struct_l,   BUF_FLAGS)
-max_bars_back(prev_struct_l_i, BUF_FLAGS)
-max_bars_back(prev_wick_h,     BUF_FLAGS)
-max_bars_back(prev_wick_l,     BUF_FLAGS)
-
-// Линии тренда (верхняя + нижняя + средняя на каждый тренд)
-var line tl_bull_upper = na  // HH — верхняя линия восходящего тренда
-var line tl_bull_lower = na  // HL — нижняя линия восходящего тренда
-var line tl_bull_mid   = na  // Средняя линия восходящего канала
-var line tl_bear_upper = na  // LH — верхняя линия нисходящего тренда
-var line tl_bear_lower = na  // LL — нижняя линия нисходящего тренда
-var line tl_bear_mid   = na  // Средняя линия нисходящего канала
-var line tl_flat_upper = na  // EQH — верхняя линия бокового тренда
-var line tl_flat_lower = na  // EQL — нижняя линия бокового тренда
-var line tl_flat_mid   = na  // Средняя линия бокового канала
-var label tl_channel_lbl = na // Лейбл с названием текущего канала тренда
-
-// V260: Наклонные зоны поддержки/сопротивления вдоль тренда
-var line     tz_bull_sup_out = na  // внешняя граница зоны поддержки (восходящий)
-var line     tz_bull_res_out = na  // внешняя граница зоны сопротивления (восходящий)
-var line     tz_bear_sup_out = na  // внешняя граница зоны поддержки (нисходящий)
-var line     tz_bear_res_out = na  // внешняя граница зоны сопротивления (нисходящий)
-var linefill tz_bull_sup_lf  = na  // заливка зоны поддержки (восходящий)
-var linefill tz_bull_res_lf  = na  // заливка зоны сопротивления (восходящий)
-var linefill tz_bear_sup_lf  = na  // заливка зоны поддержки (нисходящий)
-var linefill tz_bear_res_lf  = na  // заливка зоны сопротивления (нисходящий)
-
-// Wick-данные для зон текущих каналов (сохраняются при построении канала)
-var float bull_wh_p1 = na,  var float bull_wh_p2 = na   // High на пивот-хай (восходящий)
-var int   bull_wh_i1 = na,  var int   bull_wh_i2 = na   // индексы пивот-хай (восходящий)
-var float bull_wl_p1 = na,  var float bull_wl_p2 = na   // Low  на пивот-лоу (восходящий)
-var int   bull_wl_i1 = na,  var int   bull_wl_i2 = na   // индексы пивот-лоу (восходящий)
-var float bear_wh_p1 = na,  var float bear_wh_p2 = na   // High на пивот-хай (нисходящий)
-var int   bear_wh_i1 = na,  var int   bear_wh_i2 = na   // индексы пивот-хай (нисходящий)
-var float bear_wl_p1 = na,  var float bear_wl_p2 = na   // Low  на пивот-лоу (нисходящий)
-var int   bear_wl_i1 = na,  var int   bear_wl_i2 = na   // индексы пивот-лоу (нисходящий)
-
-// V256: Счётчики касаний для подтверждения тренда
-var int tl_hh_cnt  = 0   // Последовательные Higher Highs (верхняя граница восходящего)
-var int tl_hl_cnt  = 0   // Последовательные Higher Lows (нижняя граница восходящего)
-var int tl_lh_cnt  = 0   // Последовательные Lower Highs (верхняя граница нисходящего)
-var int tl_ll_cnt  = 0   // Последовательные Lower Lows (нижняя граница нисходящего)
-var int tl_eqh_cnt = 0   // Последовательные Equal Highs (верхняя граница бокового)
-var int tl_eql_cnt = 0   // Последовательные Equal Lows (нижняя граница бокового)
-
-// V260: Debug table для каналов тренда
-var table debug_ch_table = na
-var string[] dbg_ch_log = array.new_string(0)
-f_dbg(string s) => array.push(dbg_ch_log, s)
-
-// V264: Helper to reduce repeated debug touches pattern
-f_dbg_tc(int t) => f_dbg("  ❌ T: " + f_ts(t) + " < " + f_ts(tl_min_touches))
-
-// Обновление предыдущих свинг-хай при обнаружении нового
-if not na(tl_ph) and barstate.isconfirmed
-    // Сохраняем предыдущий свинг-хай перед перезаписью (из собственных пивотов канала)
-    prev_struct_h   := tl_ch_struct_h[1]
-    prev_struct_h_i := tl_ch_struct_h_i[1]
-    prev_wick_h     := tl_ch_wick_h[1]
-
-// Обновление предыдущих свинг-лоу при обнаружении нового
-if not na(tl_pl) and barstate.isconfirmed
-    prev_struct_l   := tl_ch_struct_l[1]
-    prev_struct_l_i := tl_ch_struct_l_i[1]
-    prev_wick_l     := tl_ch_wick_l[1]
-
-// ── V263: Динамический адаптивный lookback для каналов тренда ────────────
-// Пересчёт _tl_max_off на основе выбранного метода (вместо фиксированного значения)
-string _tl_lb_method = "Fixed"
-if tl_lookback_mode == "Pivot-Adaptive"
-    // Метод 1: По расстоянию между последними пивотами (самый надёжный)
-    // Lookback = max(расст. между Pivot High, расст. между Pivot Low) × 2
-    int _pd_h = (not na(tl_ch_struct_h_i) and not na(prev_struct_h_i)) ? math.abs(tl_ch_struct_h_i - prev_struct_h_i) : 0
-    int _pd_l = (not na(tl_ch_struct_l_i) and not na(prev_struct_l_i)) ? math.abs(tl_ch_struct_l_i - prev_struct_l_i) : 0
-    int _pd = math.max(_pd_h, _pd_l)
-    if _pd > 0
-        _tl_max_off := math.max(_tl_safe_pl, math.min(_pd * 2, MAX_OFFSET))
-    if debug_ch_mode
-        _tl_lb_method := "Pivot(Δ=" + f_ts(_pd) + ")"
-else if tl_lookback_mode == "ATR-Adaptive"
-    // Метод 2: Lookback = Constant / ATR
-    // Высокая волатильность → короткий lookback, низкая → длинный
-    float _safe_atr = math.max(nz(atr_val, syminfo.mintick), syminfo.mintick)
-    int _atr_lb = math.round(f_safe_div(tl_atr_constant, _safe_atr))
-    _tl_max_off := math.max(_tl_safe_pl, math.min(_atr_lb, MAX_OFFSET))
-    if debug_ch_mode
-        _tl_lb_method := "ATR(" + f_ts(_atr_lb) + ")"
-else if tl_lookback_mode == "R²-Adaptive" and barstate.isconfirmed
-    // Метод 3: Оптимальный lookback по максимуму R² линейной регрессии
-    // Перебор окон от min до max, инкрементальный расчёт Pearson R²
-    int _r2_lo = math.max(15, _tl_safe_pl)
-    int _r2_hi = math.min(tl_r2_max_scan, MAX_OFFSET)
-    // ~40 контрольных точек — баланс между точностью и скоростью вычислений
-    int _r2_step = math.max(1, math.round((_r2_hi - _r2_lo) / 40))
-    float _sx = 0.0
-    float _sy = 0.0
-    float _sxy = 0.0
-    float _sx2 = 0.0
-    float _sy2 = 0.0
-    float _best_r2 = -1.0
-    int _best_n = _r2_hi
-    for _k = 0 to _r2_hi - 1
-        float _xv = float(_k)
-        float _yv = nz(close[_k])
-        _sx  += _xv
-        _sy  += _yv
-        _sxy += _xv * _yv
-        _sx2 += _xv * _xv
-        _sy2 += _yv * _yv
-        int _n = _k + 1
-        if _n >= _r2_lo and (_n - _r2_lo) % _r2_step == 0
-            float _dv = (_n * _sx2 - _sx * _sx) * (_n * _sy2 - _sy * _sy)
-            if _dv > 0
-                float _rv = f_safe_div(_n * _sxy - _sx * _sy, math.sqrt(_dv))
-                float _r2v = _rv * _rv
-                if _r2v > _best_r2
-                    _best_r2 := _r2v
-                    _best_n  := _n
-    _tl_max_off := math.max(_tl_safe_pl, math.min(_best_n, MAX_OFFSET))
-    if debug_ch_mode
-        _tl_lb_method := "R²(" + f_ts(_best_n) + " r²=" + str.tostring(_best_r2, "#.##") + ")"
-else if tl_lookback_mode == "Fixed" or not barstate.isconfirmed
-    if debug_ch_mode
-        _tl_lb_method := "Fixed(" + f_ts(_tl_max_off) + ")"
-
-// ── V256: Определение паттернов HH/HL/LH/LL/EQH/EQL ──────────────────────
-// Допуск для определения равных максимумов/минимумов (EQH/EQL) — 10% от ATR
+// V280: Trend Channel drawing system moved to VISUAL to reduce ENGINE token count
+// eq_tol kept here — reused in EQH/EQL zone detection (BLOCK 5)
 float eq_tol = atr_val * 0.1
-bool has_swing_data = not na(prev_struct_h) and not na(tl_ch_struct_h) and not na(prev_struct_l) and not na(tl_ch_struct_l)
-bool is_EQH = has_swing_data and math.abs(tl_ch_struct_h - prev_struct_h) <= eq_tol
-bool is_EQL = has_swing_data and math.abs(tl_ch_struct_l - prev_struct_l) <= eq_tol
-bool is_HH  = has_swing_data and (tl_ch_struct_h > prev_struct_h) and not is_EQH
-bool is_HL  = has_swing_data and (tl_ch_struct_l > prev_struct_l) and not is_EQL
-bool is_LH  = has_swing_data and (tl_ch_struct_h < prev_struct_h) and not is_EQH
-bool is_LL  = has_swing_data and (tl_ch_struct_l < prev_struct_l) and not is_EQL
-// Восходящий тренд: HH + HL
-bool swing_bull = is_HH and is_HL
-// Нисходящий тренд: LH + LL
-bool swing_bear = is_LH and is_LL
-// Боковой тренд (Рендж): EQH + EQL
-bool swing_flat = is_EQH and is_EQL
-max_bars_back(eq_tol,     BUF_FLAGS)
-max_bars_back(is_HH,      BUF_FLAGS)
-max_bars_back(is_HL,      BUF_FLAGS)
-max_bars_back(is_LH,      BUF_FLAGS)
-max_bars_back(is_LL,      BUF_FLAGS)
-max_bars_back(is_EQH,     BUF_FLAGS)
-max_bars_back(is_EQL,     BUF_FLAGS)
-max_bars_back(swing_bull, BUF_FLAGS)
-max_bars_back(swing_bear, BUF_FLAGS)
-max_bars_back(swing_flat, BUF_FLAGS)
-
-// V256: Обновление счётчиков касаний при обнаружении новых свинг-точек
-if barstate.isconfirmed
-    // Новый свинг-хай → обновляем счётчики верхних границ
-    if not na(tl_ph) and has_swing_data
-        if is_EQH
-            tl_eqh_cnt := (tl_eqh_cnt < 2) ? 2 : tl_eqh_cnt + 1
-            tl_hh_cnt  := 0
-            tl_lh_cnt  := 0
-        else if is_HH
-            tl_hh_cnt  := (tl_hh_cnt < 2) ? 2 : tl_hh_cnt + 1
-            tl_eqh_cnt := 0
-            tl_lh_cnt  := 0
-        else if is_LH
-            tl_lh_cnt  := (tl_lh_cnt < 2) ? 2 : tl_lh_cnt + 1
-            tl_eqh_cnt := 0
-            tl_hh_cnt  := 0
-    // Новый свинг-лоу → обновляем счётчики нижних границ
-    if not na(tl_pl) and has_swing_data
-        if is_EQL
-            tl_eql_cnt := (tl_eql_cnt < 2) ? 2 : tl_eql_cnt + 1
-            tl_hl_cnt  := 0
-            tl_ll_cnt  := 0
-        else if is_HL
-            tl_hl_cnt  := (tl_hl_cnt < 2) ? 2 : tl_hl_cnt + 1
-            tl_eql_cnt := 0
-            tl_ll_cnt  := 0
-        else if is_LL
-            tl_ll_cnt  := (tl_ll_cnt < 2) ? 2 : tl_ll_cnt + 1
-            tl_eql_cnt := 0
-            tl_hl_cnt  := 0
-// Итоговое количество касаний для каждого типа канала (минимум из верхней и нижней границ)
-int bull_touches = math.min(tl_hh_cnt, tl_hl_cnt)
-int bear_touches = math.min(tl_lh_cnt, tl_ll_cnt)
-int flat_touches = math.min(tl_eqh_cnt, tl_eql_cnt)
-max_bars_back(tl_hh_cnt,  BUF_FLAGS)
-max_bars_back(tl_hl_cnt,  BUF_FLAGS)
-max_bars_back(tl_lh_cnt,  BUF_FLAGS)
-max_bars_back(tl_ll_cnt,  BUF_FLAGS)
-max_bars_back(tl_eqh_cnt, BUF_FLAGS)
-max_bars_back(tl_eql_cnt, BUF_FLAGS)
-
-// Функция: вычисление значения линии тренда на текущем баре
-f_tl_value_at(float p1, int i1, float p2, int i2, int at_bar) =>
-    float slope = (i2 != i1) ? (p2 - p1) / (i2 - i1) : 0.0
-    p2 + slope * (at_bar - i2)
-
-// Вспомогательная функция: удалить линию границ (верхнюю и нижнюю)
-f_delete_band(line ln) =>
-    if not na(ln)
-        line.delete(ln)
-    line(na)
-
-// Вспомогательная функция: нарисовать/обновить линию тренда
-f_update_tl(line ln, int x1, float y1, int x2, float y2, color col, int w, string sty) =>
-    line result = ln
-    // V257-fix: clamp x1 если он выходит за пределы исторического буфера
-    int safe_x1 = x1
-    float safe_y1 = y1
-    if (bar_index - x1) > MAX_OFFSET
-        safe_x1 := bar_index - MAX_OFFSET
-        safe_y1 := (x2 != x1) ? y1 + (y2 - y1) * (safe_x1 - x1) / (x2 - x1) : y1
-    if na(ln)
-        result := line.new(safe_x1, safe_y1, x2, y2, color=col, width=w, style=sty)
-    else
-        line.set_xy1(ln, safe_x1, safe_y1)
-        line.set_xy2(ln, x2, y2)
-    result
-
-if show_trendlines and barstate.isconfirmed
-    // Проверка валидности свинг-данных с ограничением _tl_max_off (собственный лимит каналов тренда)
-    bool has_full_data = not na(prev_struct_h) and not na(tl_ch_struct_h) and not na(prev_struct_h_i) and not na(tl_ch_struct_h_i) and (tl_ch_struct_h_i != prev_struct_h_i) and not na(prev_struct_l) and not na(tl_ch_struct_l) and not na(prev_struct_l_i) and not na(tl_ch_struct_l_i) and (tl_ch_struct_l_i != prev_struct_l_i) and (bar_index - tl_ch_struct_h_i) <= _tl_max_off and (bar_index - tl_ch_struct_l_i) <= _tl_max_off
-
-    // ── V260: Debug — сбор диагностики каналов тренда ──────────────────────
-    if debug_ch_mode
-        // V262: Добавляем разделитель блока — храним последние 3 тренда
-        array.push(dbg_ch_log, "──── bar " + f_ts(bar_index) + " ────")
-        // Обрезаем до последних 3 блоков
-        if array.size(dbg_ch_log) > 1
-            int _dbg_seps = 0
-            int _dbg_keep = -1
-            for _di = array.size(dbg_ch_log) - 1 to 0
-                if str.contains(array.get(dbg_ch_log, _di), "──── bar")
-                    _dbg_seps += 1
-                    if _dbg_seps == 3
-                        _dbg_keep := _di
-                        break
-            if _dbg_keep > 0
-                for _dj = 1 to _dbg_keep
-                    array.remove(dbg_ch_log, 0)
-        // ── 1. Параметры канала ──
-        f_dbg("═══ ПАРАМЕТРЫ ═══\nL=" + f_ts(_tl_safe_pl) + " R=" + f_ts(_tl_safe_pr) + " MaxOff=" + f_ts(_tl_max_off) + " MinT=" + f_ts(tl_min_touches) + "\nATR=" + f_mt(atr_val) + " EQ=" + f_mt(eq_tol) + "\nLookback: " + _tl_lb_method)
-        // ── 2. Обнаруженные пивоты ──
-        f_dbg("═══ ПИВОТЫ ═══\nSH: " + (na(tl_ch_struct_h) ? "—" : f_mt(tl_ch_struct_h) + " b" + f_ts(tl_ch_struct_h_i)) + " | SL: " + (na(tl_ch_struct_l) ? "—" : f_mt(tl_ch_struct_l) + " b" + f_ts(tl_ch_struct_l_i)))
-        f_dbg("pSH: " + (na(prev_struct_h) ? "—" : f_mt(prev_struct_h) + " b" + f_ts(prev_struct_h_i)) + " | pSL: " + (na(prev_struct_l) ? "—" : f_mt(prev_struct_l) + " b" + f_ts(prev_struct_l_i)) + "\nWkH: " + (na(tl_ch_wick_h) ? "—" : f_mt(tl_ch_wick_h)) + "/" + (na(prev_wick_h) ? "—" : f_mt(prev_wick_h)) + " WkL: " + (na(tl_ch_wick_l) ? "—" : f_mt(tl_ch_wick_l)) + "/" + (na(prev_wick_l) ? "—" : f_mt(prev_wick_l)))
-        // ── 3. has_full_data — детальная разбивка ──
-        string _v = "═══ ВАЛИДАЦИЯ (full_data=" + str.tostring(has_full_data) + ") ═══\n" + (na(prev_struct_h) ? "❌" : "✅") + "pH " + (na(tl_ch_struct_h) ? "❌" : "✅") + "cH " + (na(prev_struct_h_i) ? "❌" : "✅") + "pHi " + (na(tl_ch_struct_h_i) ? "❌" : "✅") + "cHi"
-        f_dbg(_v)
-        bool _dbg_hi_diff = not na(tl_ch_struct_h_i) and not na(prev_struct_h_i) and (tl_ch_struct_h_i != prev_struct_h_i)
-        f_dbg((_dbg_hi_diff ? "✅" : "❌") + " Hi idx≠: " + f_ts(nz(tl_ch_struct_h_i)) + "/" + f_ts(nz(prev_struct_h_i)))
-        string _v2 = (na(prev_struct_l) ? "❌" : "✅") + "pL " + (na(tl_ch_struct_l) ? "❌" : "✅") + "cL " + (na(prev_struct_l_i) ? "❌" : "✅") + "pLi " + (na(tl_ch_struct_l_i) ? "❌" : "✅") + "cLi"
-        f_dbg(_v2)
-        bool _dbg_lo_diff = not na(tl_ch_struct_l_i) and not na(prev_struct_l_i) and (tl_ch_struct_l_i != prev_struct_l_i)
-        f_dbg((_dbg_lo_diff ? "✅" : "❌") + " Lo idx≠: " + f_ts(nz(tl_ch_struct_l_i)) + "/" + f_ts(nz(prev_struct_l_i)))
-        int _dbg_hi_age = bar_index - nz(tl_ch_struct_h_i)
-        int _dbg_lo_age = bar_index - nz(tl_ch_struct_l_i)
-        f_dbg((_dbg_hi_age <= _tl_max_off ? "✅" : "❌") + " HiAge=" + f_ts(_dbg_hi_age) + " " + (_dbg_lo_age <= _tl_max_off ? "✅" : "❌") + " LoAge=" + f_ts(_dbg_lo_age) + " ≤" + f_ts(_tl_max_off))
-        // ── 4. Паттерны свингов ──
-        f_dbg("═══ СВИНГИ ═══\n" + (has_swing_data ? ("ΔH=" + f_mt(tl_ch_struct_h - prev_struct_h) + (is_EQH ? " EQH" : is_HH ? " HH" : " LH")) : "—") + "\n" + (has_swing_data ? ("ΔL=" + f_mt(tl_ch_struct_l - prev_struct_l) + (is_EQL ? " EQL" : is_HL ? " HL" : " LL")) : "—") + "\nHH=" + str.tostring(is_HH) + " HL=" + str.tostring(is_HL) + " LH=" + str.tostring(is_LH) + " LL=" + str.tostring(is_LL) + " EQH=" + str.tostring(is_EQH) + " EQL=" + str.tostring(is_EQL) + "\n" + (swing_bull ? "✅" : "❌") + "Bull " + (swing_bear ? "✅" : "❌") + "Bear " + (swing_flat ? "✅" : "❌") + "Flat")
-        // ── 5. Счётчики касаний ──
-        string _ok = " ✅≥"
-        string _no = " ❌<"
-        f_dbg("═══ КАСАНИЯ ═══\n🔼 HH=" + f_ts(tl_hh_cnt) + " HL=" + f_ts(tl_hl_cnt) + " min=" + f_ts(bull_touches) + (bull_touches >= tl_min_touches ? _ok : _no) + f_ts(tl_min_touches) + "\n🔽 LH=" + f_ts(tl_lh_cnt) + " LL=" + f_ts(tl_ll_cnt) + " min=" + f_ts(bear_touches) + (bear_touches >= tl_min_touches ? _ok : _no) + f_ts(tl_min_touches) + "\n◼ EQH=" + f_ts(tl_eqh_cnt) + " EQL=" + f_ts(tl_eql_cnt) + " min=" + f_ts(flat_touches) + (flat_touches >= tl_min_touches ? _ok : _no) + f_ts(tl_min_touches))
-        // ── 6. Текущее состояние каналов ──
-        f_dbg("═══ КАНАЛЫ ═══\n🔼" + (na(tl_bull_upper) ? "❌" : "✅") + " 🔽" + (na(tl_bear_upper) ? "❌" : "✅") + " ◼" + (na(tl_flat_upper) ? "❌" : "✅"))
-
-    // Удаляем старый лейбл канала перед перерисовкой
-    if not na(tl_channel_lbl)
-        label.delete(tl_channel_lbl)
-        tl_channel_lbl := na
-
-    // ── Восходящий тренд: HH (Higher High) + HL (Higher Low) ──
-    // Верхняя линия — по Body High (HH), нижняя — по Body Low (HL)
-    // Пробой ниже HL-линии → разворот → удаляем канал
-    if has_full_data and swing_bull and not swing_flat and bull_touches >= tl_min_touches
-        float tl_hl_val = f_tl_value_at(prev_struct_l, prev_struct_l_i, tl_ch_struct_l, tl_ch_struct_l_i, bar_index)
-        if close < tl_hl_val
-            tl_bull_upper := f_delete_band(tl_bull_upper)
-            tl_bull_lower := f_delete_band(tl_bull_lower)
-            tl_bull_mid   := f_delete_band(tl_bull_mid)
-            bull_wh_p1 := na, bull_wh_p2 := na, bull_wh_i1 := na, bull_wh_i2 := na
-            bull_wl_p1 := na, bull_wl_p2 := na, bull_wl_i1 := na, bull_wl_i2 := na
-            if debug_ch_mode
-                f_dbg("═══ 🔼 ВОСХ. ═══\n⚠️ УДАЛЁН: пробой HL\n  C=" + f_mt(close) + " <HL=" + f_mt(tl_hl_val) + "\n  Δ=" + f_mt(tl_hl_val - close))
-        else
-            float ext_hh = f_tl_value_at(prev_struct_h, prev_struct_h_i, tl_ch_struct_h, tl_ch_struct_h_i, bar_index + 5)
-            float ext_hl = f_tl_value_at(prev_struct_l, prev_struct_l_i, tl_ch_struct_l, tl_ch_struct_l_i, bar_index + 5)
-            tl_bull_upper := f_update_tl(tl_bull_upper, prev_struct_h_i, prev_struct_h, bar_index + 5, ext_hh, c_tl_bull, tl_width, line.style_solid)
-            tl_bull_lower := f_update_tl(tl_bull_lower, prev_struct_l_i, prev_struct_l, bar_index + 5, ext_hl, c_tl_bull, tl_width, line.style_solid)
-            int bull_mid_x1 = math.max(prev_struct_h_i, prev_struct_l_i)
-            float bull_mid_uy = f_tl_value_at(prev_struct_h, prev_struct_h_i, tl_ch_struct_h, tl_ch_struct_h_i, bull_mid_x1)
-            float bull_mid_ly = f_tl_value_at(prev_struct_l, prev_struct_l_i, tl_ch_struct_l, tl_ch_struct_l_i, bull_mid_x1)
-            tl_bull_mid := f_update_tl(tl_bull_mid, bull_mid_x1, (bull_mid_uy + bull_mid_ly) / 2.0, bar_index + 5, (ext_hh + ext_hl) / 2.0, c_tl_bull, tl_width, line.style_dotted)
-            tl_channel_lbl := label.new(bar_index + 6, ext_hh, text="Восходящий", color=C_BLACK100, textcolor=c_tl_bull, style=label.style_label_left, size=size.small)
-            // Сохраняем wick-данные для зон канала
-            bull_wh_p1 := prev_wick_h
-            bull_wh_p2 := tl_ch_wick_h
-            bull_wh_i1 := prev_struct_h_i
-            bull_wh_i2 := tl_ch_struct_h_i
-            bull_wl_p1 := prev_wick_l
-            bull_wl_p2 := tl_ch_wick_l
-            bull_wl_i1 := prev_struct_l_i
-            bull_wl_i2 := tl_ch_struct_l_i
-            if debug_ch_mode
-                f_dbg("═══ 🔼 ВОСХ. ═══\n✅ СОЗДАН")
-                float _dbg_bull_hl_val = f_tl_value_at(prev_struct_l, prev_struct_l_i, tl_ch_struct_l, tl_ch_struct_l_i, bar_index)
-                f_dbg("  HH: " + f_mt(prev_struct_h) + "→" + f_mt(tl_ch_struct_h) + " s=" + f_mt(ext_hh) + "\n  HL: " + f_mt(prev_struct_l) + "→" + f_mt(tl_ch_struct_l) + " s=" + f_mt(ext_hl) + "\n  C=" + f_mt(close) + " ≥HL=" + f_mt(_dbg_bull_hl_val) + " ✅\n  T: " + f_ts(bull_touches) + " ≥ " + f_ts(tl_min_touches))
-    else if not na(tl_bull_upper)
-        float tl_hl_chk = f_tl_value_at(line.get_y1(tl_bull_lower), line.get_x1(tl_bull_lower), line.get_y2(tl_bull_lower), line.get_x2(tl_bull_lower), bar_index)
-        if close < tl_hl_chk or not swing_bull or swing_flat or bull_touches < tl_min_touches
-            tl_bull_upper := f_delete_band(tl_bull_upper)
-            tl_bull_lower := f_delete_band(tl_bull_lower)
-            tl_bull_mid   := f_delete_band(tl_bull_mid)
-            bull_wh_p1 := na, bull_wh_p2 := na, bull_wh_i1 := na, bull_wh_i2 := na
-            bull_wl_p1 := na, bull_wl_p2 := na, bull_wl_i1 := na, bull_wl_i2 := na
-            if debug_ch_mode
-                f_dbg("═══ 🔼 ВОСХ. ═══\n⚠️ УДАЛЁН:")
-                if close < tl_hl_chk
-                    f_dbg("  ❌ HL: C=" + f_mt(close) + " <" + f_mt(tl_hl_chk))
-                if not swing_bull
-                    f_dbg("  ❌ !swing_bull")
-                if swing_flat
-                    f_dbg("  ❌ swing_flat")
-                if bull_touches < tl_min_touches
-                    f_dbg_tc(bull_touches)
-        else
-            float ext_hh2 = f_tl_value_at(line.get_y1(tl_bull_upper), line.get_x1(tl_bull_upper), line.get_y2(tl_bull_upper), line.get_x2(tl_bull_upper), bar_index + 5)
-            float ext_hl2 = f_tl_value_at(line.get_y1(tl_bull_lower), line.get_x1(tl_bull_lower), line.get_y2(tl_bull_lower), line.get_x2(tl_bull_lower), bar_index + 5)
-            line.set_x2(tl_bull_upper, bar_index + 5)
-            line.set_y2(tl_bull_upper, ext_hh2)
-            line.set_x2(tl_bull_lower, bar_index + 5)
-            line.set_y2(tl_bull_lower, ext_hl2)
-            if not na(tl_bull_mid)
-                line.set_x2(tl_bull_mid, bar_index + 5)
-                line.set_y2(tl_bull_mid, (ext_hh2 + ext_hl2) / 2.0)
-            tl_channel_lbl := label.new(bar_index + 6, ext_hh2, text="Восходящий", color=C_BLACK100, textcolor=c_tl_bull, style=label.style_label_left, size=size.small)
-            if debug_ch_mode
-                f_dbg("═══ 🔼 ВОСХ. ═══\n✅ ПРОДЛЁН")
-    else
-        if debug_ch_mode
-            f_dbg("═══ 🔼 ВОСХ. ═══\n❌ НЕ СОЗДАН:")
-            if not has_full_data
-                f_dbg("  ❌ full_data=false")
-            if not swing_bull
-                f_dbg("  ❌ swing_bull=false")
-                if not is_HH
-                    f_dbg("    → is_HH=false: " + f_mt(nz(tl_ch_struct_h)) + (has_swing_data ? (tl_ch_struct_h > prev_struct_h ? " > " : " ≤ ") + f_mt(nz(prev_struct_h)) : " (na)"))
-                if not is_HL
-                    f_dbg("    → is_HL=false: " + f_mt(nz(tl_ch_struct_l)) + (has_swing_data ? (tl_ch_struct_l > prev_struct_l ? " > " : " ≤ ") + f_mt(nz(prev_struct_l)) : " (na)"))
-            if swing_flat
-                f_dbg("  ❌ swing_flat=true")
-            if bull_touches < tl_min_touches
-                f_dbg_tc(bull_touches)
-
-    // ── Нисходящий тренд: LH (Lower High) + LL (Lower Low) ──
-    // Верхняя линия — по Body High (LH), нижняя — по Body Low (LL)
-    // Пробой выше LH-линии → разворот → удаляем канал
-    if has_full_data and swing_bear and not swing_flat and bear_touches >= tl_min_touches
-        float tl_lh_val = f_tl_value_at(prev_struct_h, prev_struct_h_i, tl_ch_struct_h, tl_ch_struct_h_i, bar_index)
-        if close > tl_lh_val
-            tl_bear_upper := f_delete_band(tl_bear_upper)
-            tl_bear_lower := f_delete_band(tl_bear_lower)
-            tl_bear_mid   := f_delete_band(tl_bear_mid)
-            bear_wh_p1 := na, bear_wh_p2 := na, bear_wh_i1 := na, bear_wh_i2 := na
-            bear_wl_p1 := na, bear_wl_p2 := na, bear_wl_i1 := na, bear_wl_i2 := na
-            if debug_ch_mode
-                f_dbg("═══ 🔽 НИСХ. ═══\n⚠️ УДАЛЁН: пробой LH\n  C=" + f_mt(close) + " >LH=" + f_mt(tl_lh_val) + "\n  Δ=" + f_mt(close - tl_lh_val))
-        else
-            float ext_lh = f_tl_value_at(prev_struct_h, prev_struct_h_i, tl_ch_struct_h, tl_ch_struct_h_i, bar_index + 5)
-            float ext_ll = f_tl_value_at(prev_struct_l, prev_struct_l_i, tl_ch_struct_l, tl_ch_struct_l_i, bar_index + 5)
-            tl_bear_upper := f_update_tl(tl_bear_upper, prev_struct_h_i, prev_struct_h, bar_index + 5, ext_lh, c_tl_bear, tl_width, line.style_solid)
-            tl_bear_lower := f_update_tl(tl_bear_lower, prev_struct_l_i, prev_struct_l, bar_index + 5, ext_ll, c_tl_bear, tl_width, line.style_solid)
-            int bear_mid_x1 = math.max(prev_struct_h_i, prev_struct_l_i)
-            float bear_mid_uy = f_tl_value_at(prev_struct_h, prev_struct_h_i, tl_ch_struct_h, tl_ch_struct_h_i, bear_mid_x1)
-            float bear_mid_ly = f_tl_value_at(prev_struct_l, prev_struct_l_i, tl_ch_struct_l, tl_ch_struct_l_i, bear_mid_x1)
-            tl_bear_mid := f_update_tl(tl_bear_mid, bear_mid_x1, (bear_mid_uy + bear_mid_ly) / 2.0, bar_index + 5, (ext_lh + ext_ll) / 2.0, c_tl_bear, tl_width, line.style_dotted)
-            tl_channel_lbl := label.new(bar_index + 6, ext_lh, text="Нисходящий", color=C_BLACK100, textcolor=c_tl_bear, style=label.style_label_left, size=size.small)
-            // Сохраняем wick-данные для зон канала
-            bear_wh_p1 := prev_wick_h
-            bear_wh_p2 := tl_ch_wick_h
-            bear_wh_i1 := prev_struct_h_i
-            bear_wh_i2 := tl_ch_struct_h_i
-            bear_wl_p1 := prev_wick_l
-            bear_wl_p2 := tl_ch_wick_l
-            bear_wl_i1 := prev_struct_l_i
-            bear_wl_i2 := tl_ch_struct_l_i
-            if debug_ch_mode
-                f_dbg("═══ 🔽 НИСХ. ═══\n✅ СОЗДАН")
-                float _dbg_bear_lh_val = f_tl_value_at(prev_struct_h, prev_struct_h_i, tl_ch_struct_h, tl_ch_struct_h_i, bar_index)
-                f_dbg("  LH: " + f_mt(prev_struct_h) + "→" + f_mt(tl_ch_struct_h) + " s=" + f_mt(ext_lh) + "\n  LL: " + f_mt(prev_struct_l) + "→" + f_mt(tl_ch_struct_l) + " s=" + f_mt(ext_ll) + "\n  C=" + f_mt(close) + " ≤LH=" + f_mt(_dbg_bear_lh_val) + " ✅\n  T: " + f_ts(bear_touches) + " ≥ " + f_ts(tl_min_touches))
-    else if not na(tl_bear_upper)
-        float tl_lh_chk = f_tl_value_at(line.get_y1(tl_bear_upper), line.get_x1(tl_bear_upper), line.get_y2(tl_bear_upper), line.get_x2(tl_bear_upper), bar_index)
-        if close > tl_lh_chk or not swing_bear or swing_flat or bear_touches < tl_min_touches
-            tl_bear_upper := f_delete_band(tl_bear_upper)
-            tl_bear_lower := f_delete_band(tl_bear_lower)
-            tl_bear_mid   := f_delete_band(tl_bear_mid)
-            bear_wh_p1 := na, bear_wh_p2 := na, bear_wh_i1 := na, bear_wh_i2 := na
-            bear_wl_p1 := na, bear_wl_p2 := na, bear_wl_i1 := na, bear_wl_i2 := na
-            if debug_ch_mode
-                f_dbg("═══ 🔽 НИСХ. ═══\n⚠️ УДАЛЁН:")
-                if close > tl_lh_chk
-                    f_dbg("  ❌ LH: C=" + f_mt(close) + " >" + f_mt(tl_lh_chk))
-                if not swing_bear
-                    f_dbg("  ❌ !swing_bear")
-                if swing_flat
-                    f_dbg("  ❌ swing_flat")
-                if bear_touches < tl_min_touches
-                    f_dbg_tc(bear_touches)
-        else
-            float ext_lh2 = f_tl_value_at(line.get_y1(tl_bear_upper), line.get_x1(tl_bear_upper), line.get_y2(tl_bear_upper), line.get_x2(tl_bear_upper), bar_index + 5)
-            float ext_ll2 = f_tl_value_at(line.get_y1(tl_bear_lower), line.get_x1(tl_bear_lower), line.get_y2(tl_bear_lower), line.get_x2(tl_bear_lower), bar_index + 5)
-            line.set_x2(tl_bear_upper, bar_index + 5)
-            line.set_y2(tl_bear_upper, ext_lh2)
-            line.set_x2(tl_bear_lower, bar_index + 5)
-            line.set_y2(tl_bear_lower, ext_ll2)
-            if not na(tl_bear_mid)
-                line.set_x2(tl_bear_mid, bar_index + 5)
-                line.set_y2(tl_bear_mid, (ext_lh2 + ext_ll2) / 2.0)
-            tl_channel_lbl := label.new(bar_index + 6, ext_lh2, text="Нисходящий", color=C_BLACK100, textcolor=c_tl_bear, style=label.style_label_left, size=size.small)
-            if debug_ch_mode
-                f_dbg("═══ 🔽 НИСХ. ═══\n✅ ПРОДЛЁН")
-    else
-        if debug_ch_mode
-            f_dbg("═══ 🔽 НИСХ. ═══\n❌ НЕ СОЗДАН:")
-            if not has_full_data
-                f_dbg("  ❌ full_data=false")
-            if not swing_bear
-                f_dbg("  ❌ swing_bear=false")
-                if not is_LH
-                    f_dbg("    → is_LH=false: " + f_mt(nz(tl_ch_struct_h)) + (has_swing_data ? (tl_ch_struct_h < prev_struct_h ? " < " : " ≥ ") + f_mt(nz(prev_struct_h)) : " (na)"))
-                if not is_LL
-                    f_dbg("    → is_LL=false: " + f_mt(nz(tl_ch_struct_l)) + (has_swing_data ? (tl_ch_struct_l < prev_struct_l ? " < " : " ≥ ") + f_mt(nz(prev_struct_l)) : " (na)"))
-            if swing_flat
-                f_dbg("  ❌ swing_flat=true")
-            if bear_touches < tl_min_touches
-                f_dbg_tc(bear_touches)
-
-    // ── Боковой тренд (Рендж): EQH (Equal Highs) + EQL (Equal Lows) ──
-    // Верхняя горизонтальная линия на уровне свинг-хай (EQH)
-    // Нижняя горизонтальная линия на уровне свинг-лоу (EQL)
-    // Пробой выше EQH или ниже EQL → выход из боковика → удаляем канал
-    if swing_flat and not na(tl_ch_struct_h) and not na(tl_ch_struct_l) and flat_touches >= tl_min_touches
-        if close > tl_ch_struct_h or close < tl_ch_struct_l
-            tl_flat_upper := f_delete_band(tl_flat_upper)
-            tl_flat_lower := f_delete_band(tl_flat_lower)
-            tl_flat_mid   := f_delete_band(tl_flat_mid)
-            if debug_ch_mode
-                f_dbg("═══ ◼ БОКОВ. ═══\n⚠️ УДАЛЁН: пробой рэнджа")
-                if close > tl_ch_struct_h
-                    f_dbg("  ❌ C=" + f_mt(close) + " >EQH=" + f_mt(tl_ch_struct_h))
-                if close < tl_ch_struct_l
-                    f_dbg("  ❌ C=" + f_mt(close) + " <EQL=" + f_mt(tl_ch_struct_l))
-        else
-            int flat_start = math.max(nz(tl_ch_struct_h_i, bar_index - 50), nz(tl_ch_struct_l_i, bar_index - 50))
-            if (bar_index - flat_start) <= _tl_max_off
-                tl_flat_upper := f_update_tl(tl_flat_upper, flat_start, tl_ch_struct_h, bar_index + 5, tl_ch_struct_h, c_tl_flat, tl_width, line.style_dashed)
-                tl_flat_lower := f_update_tl(tl_flat_lower, flat_start, tl_ch_struct_l, bar_index + 5, tl_ch_struct_l, c_tl_flat, tl_width, line.style_dashed)
-                float flat_mid_val = (tl_ch_struct_h + tl_ch_struct_l) / 2.0
-                tl_flat_mid := f_update_tl(tl_flat_mid, flat_start, flat_mid_val, bar_index + 5, flat_mid_val, c_tl_flat, tl_width, line.style_dotted)
-                tl_channel_lbl := label.new(bar_index + 6, tl_ch_struct_h, text="Боковой", color=C_BLACK100, textcolor=c_tl_flat, style=label.style_label_left, size=size.small)
-                if debug_ch_mode
-                    f_dbg("═══ ◼ БОКОВ. ═══\n✅ СОЗДАН\n  EQH: " + f_mt(tl_ch_struct_h) + " | EQL: " + f_mt(tl_ch_struct_l) + "\n  W: " + f_mt(tl_ch_struct_h - tl_ch_struct_l) + " T: " + f_ts(flat_touches) + " ≥ " + f_ts(tl_min_touches))
-            else
-                if debug_ch_mode
-                    f_dbg("═══ ◼ БОКОВ. ═══\n❌ НЕ СОЗДАН: flat_start далеко\n  Δ=" + f_ts(bar_index - flat_start) + " >max=" + f_ts(_tl_max_off))
-    else if not na(tl_flat_upper)
-        if close > tl_ch_struct_h or close < tl_ch_struct_l or (not swing_flat and (swing_bull or swing_bear))
-            tl_flat_upper := f_delete_band(tl_flat_upper)
-            tl_flat_lower := f_delete_band(tl_flat_lower)
-            tl_flat_mid   := f_delete_band(tl_flat_mid)
-            if debug_ch_mode
-                f_dbg("═══ ◼ БОКОВ. ═══\n⚠️ УДАЛЁН:")
-                if close > tl_ch_struct_h
-                    f_dbg("  ❌ C=" + f_mt(close) + " >EQH=" + f_mt(tl_ch_struct_h))
-                if close < tl_ch_struct_l
-                    f_dbg("  ❌ C=" + f_mt(close) + " <EQL=" + f_mt(tl_ch_struct_l))
-                if not swing_flat and (swing_bull or swing_bear)
-                    f_dbg("  ❌ →" + (swing_bull ? "bull" : "bear"))
-        else
-            line.set_x2(tl_flat_upper, bar_index + 5)
-            line.set_x2(tl_flat_lower, bar_index + 5)
-            if not na(tl_flat_mid)
-                line.set_x2(tl_flat_mid, bar_index + 5)
-            tl_channel_lbl := label.new(bar_index + 6, tl_ch_struct_h, text="Боковой", color=C_BLACK100, textcolor=c_tl_flat, style=label.style_label_left, size=size.small)
-            if debug_ch_mode
-                f_dbg("═══ ◼ БОКОВ. ═══\n✅ ПРОДЛЁН")
-    else
-        if debug_ch_mode
-            f_dbg("═══ ◼ БОКОВ. ═══\n❌ НЕ СОЗДАН:")
-            if not swing_flat
-                f_dbg("  ❌ swing_flat=false")
-            if na(tl_ch_struct_h)
-                f_dbg("  ❌ struct_h=na")
-            if na(tl_ch_struct_l)
-                f_dbg("  ❌ struct_l=na")
-            if flat_touches < tl_min_touches
-                f_dbg_tc(flat_touches)
-
-    // ── V260: Наклонные зоны поддержки/сопротивления по тренду ──────────
-    // Зоны строятся по фитилям: сопротивление = от тела до High, поддержка = от тела до Low
-
-    // ── Восходящий тренд: поддержка (HL→Low) + сопротивление (HH→High) ──
-    if show_trend_zones and not na(tl_bull_lower) and not na(tl_bull_upper) and not na(bull_wh_p1) and not na(bull_wl_p1)
-        int   bl_x1 = line.get_x1(tl_bull_lower)
-        int   bl_x2 = line.get_x2(tl_bull_lower)
-        float sup_y1 = f_tl_value_at(bull_wl_p1, bull_wl_i1, bull_wl_p2, bull_wl_i2, bl_x1)
-        float sup_y2 = f_tl_value_at(bull_wl_p1, bull_wl_i1, bull_wl_p2, bull_wl_i2, bl_x2)
-        tz_bull_sup_out := f_update_tl(tz_bull_sup_out, bl_x1, sup_y1, bl_x2, sup_y2, c_tz_sup, 1, line.style_dotted)
-        if na(tz_bull_sup_lf)
-            tz_bull_sup_lf := linefill.new(tl_bull_lower, tz_bull_sup_out, c_tz_sup)
-        else
-            linefill.set_color(tz_bull_sup_lf, c_tz_sup)
-        int   bu_x1 = line.get_x1(tl_bull_upper)
-        int   bu_x2 = line.get_x2(tl_bull_upper)
-        float res_y1 = f_tl_value_at(bull_wh_p1, bull_wh_i1, bull_wh_p2, bull_wh_i2, bu_x1)
-        float res_y2 = f_tl_value_at(bull_wh_p1, bull_wh_i1, bull_wh_p2, bull_wh_i2, bu_x2)
-        tz_bull_res_out := f_update_tl(tz_bull_res_out, bu_x1, res_y1, bu_x2, res_y2, c_tz_res, 1, line.style_dotted)
-        if na(tz_bull_res_lf)
-            tz_bull_res_lf := linefill.new(tl_bull_upper, tz_bull_res_out, c_tz_res)
-        else
-            linefill.set_color(tz_bull_res_lf, c_tz_res)
-        if debug_ch_mode
-            f_dbg("═══ ЗОНЫ ВОСХ. ═══\n✅ sup: " + f_mt(sup_y1) + "→" + f_mt(sup_y2) + "\n✅ res: " + f_mt(res_y1) + "→" + f_mt(res_y2))
-    else
-        if not na(tz_bull_sup_lf)
-            linefill.delete(tz_bull_sup_lf)
-            tz_bull_sup_lf := na
-        tz_bull_sup_out := f_delete_band(tz_bull_sup_out)
-        if not na(tz_bull_res_lf)
-            linefill.delete(tz_bull_res_lf)
-            tz_bull_res_lf := na
-        tz_bull_res_out := f_delete_band(tz_bull_res_out)
-        if debug_ch_mode
-            f_dbg("═══ ЗОНЫ ВОСХ. ═══\n❌ НЕ СОЗДАНЫ:")
-            if not show_trend_zones
-                f_dbg("  ❌ trend_zones=off")
-            if na(tl_bull_lower)
-                f_dbg("  ❌ bull_lower=na")
-            if na(tl_bull_upper)
-                f_dbg("  ❌ bull_upper=na")
-            if na(bull_wh_p1)
-                f_dbg("  ❌ bull_wh_p1=na")
-            if na(bull_wl_p1)
-                f_dbg("  ❌ bull_wl_p1=na")
-
-    // ── Нисходящий тренд: поддержка (LL→Low) + сопротивление (LH→High) ──
-    if show_trend_zones and not na(tl_bear_lower) and not na(tl_bear_upper) and not na(bear_wh_p1) and not na(bear_wl_p1)
-        int   brl_x1 = line.get_x1(tl_bear_lower)
-        int   brl_x2 = line.get_x2(tl_bear_lower)
-        float bsup_y1 = f_tl_value_at(bear_wl_p1, bear_wl_i1, bear_wl_p2, bear_wl_i2, brl_x1)
-        float bsup_y2 = f_tl_value_at(bear_wl_p1, bear_wl_i1, bear_wl_p2, bear_wl_i2, brl_x2)
-        tz_bear_sup_out := f_update_tl(tz_bear_sup_out, brl_x1, bsup_y1, brl_x2, bsup_y2, c_tz_sup, 1, line.style_dotted)
-        if na(tz_bear_sup_lf)
-            tz_bear_sup_lf := linefill.new(tl_bear_lower, tz_bear_sup_out, c_tz_sup)
-        else
-            linefill.set_color(tz_bear_sup_lf, c_tz_sup)
-        int   bru_x1 = line.get_x1(tl_bear_upper)
-        int   bru_x2 = line.get_x2(tl_bear_upper)
-        float bres_y1 = f_tl_value_at(bear_wh_p1, bear_wh_i1, bear_wh_p2, bear_wh_i2, bru_x1)
-        float bres_y2 = f_tl_value_at(bear_wh_p1, bear_wh_i1, bear_wh_p2, bear_wh_i2, bru_x2)
-        tz_bear_res_out := f_update_tl(tz_bear_res_out, bru_x1, bres_y1, bru_x2, bres_y2, c_tz_res, 1, line.style_dotted)
-        if na(tz_bear_res_lf)
-            tz_bear_res_lf := linefill.new(tl_bear_upper, tz_bear_res_out, c_tz_res)
-        else
-            linefill.set_color(tz_bear_res_lf, c_tz_res)
-        if debug_ch_mode
-            f_dbg("═══ ЗОНЫ НИСХ. ═══\n✅ sup: " + f_mt(bsup_y1) + "→" + f_mt(bsup_y2) + "\n✅ res: " + f_mt(bres_y1) + "→" + f_mt(bres_y2))
-    else
-        if not na(tz_bear_sup_lf)
-            linefill.delete(tz_bear_sup_lf)
-            tz_bear_sup_lf := na
-        tz_bear_sup_out := f_delete_band(tz_bear_sup_out)
-        if not na(tz_bear_res_lf)
-            linefill.delete(tz_bear_res_lf)
-            tz_bear_res_lf := na
-        tz_bear_res_out := f_delete_band(tz_bear_res_out)
-        if debug_ch_mode
-            f_dbg("═══ ЗОНЫ НИСХ. ═══\n❌ НЕ СОЗДАНЫ:")
-            if not show_trend_zones
-                f_dbg("  ❌ trend_zones=off")
-            if na(tl_bear_lower)
-                f_dbg("  ❌ bear_lower=na")
-            if na(tl_bear_upper)
-                f_dbg("  ❌ bear_upper=na")
-            if na(bear_wh_p1)
-                f_dbg("  ❌ bear_wh_p1=na")
-            if na(bear_wl_p1)
-                f_dbg("  ❌ bear_wl_p1=na")
-
-if not show_trendlines and debug_ch_mode and barstate.isconfirmed
-    array.clear(dbg_ch_log)
-    f_dbg("═══ КАНАЛЫ ОТКЛ. ═══\n❌ show_trendlines=false")
+max_bars_back(eq_tol, BUF_FLAGS)
 
 var float pd_high = high
 var float pd_low  = low
+
+
 var float pd_mid  = math.avg(high, low)
 var float temp_high = high
 var float temp_low  = low
@@ -5894,35 +5192,7 @@ float _be_low_pre  = ta.lowest(low, 2)
 
 // indicator mode: breakeven manager disabled (no open trades to manage)
 
-// ── LONG / SHORT Labels (V248: контекстуальные по типу зоны и RSI) ────────
-if show_signals and in_window
-    for _sig_i = 0 to 1
-        bool _is_long = _sig_i == 0
-        if (_is_long ? trigger_buy : trigger_sell)
-            string _sig_txt = ""
-            string _sig_zt = ""
-            float  _sig_sc = -1.0
-            if use_label_quality and array.size(zone_db) > 0
-                for z in zone_db
-                    if z.active and (z.is_bull == _is_long) and z.score > _sig_sc
-                        _sig_sc := z.score
-                        // V279: Extended zone type labels for signals
-                        _sig_zt := z.z_type == "BB" ? (_is_long ? "BB↑" : "BB↓") : 
-                                   z.z_type == "RZ" ? (_is_long ? "RejZ↑" : "RejZ↓") : 
-                                   z.z_type == "IMB" ? "IMB" : 
-                                   z.z_type == "ACC" ? "Acc" : 
-                                   z.z_type == "DST" ? "Dst" : 
-                                   z.z_type == "VCP" ? "VCP" : 
-                                   z.z_type == "MBR" ? "MBR" : 
-                                   (_is_long ? "Sup" : "Res")
-                if _sig_sc > 0
-                    string te = f_emoji(_sig_sc)
-                    string rsi_ctx = _is_long ? (rsi_val <= inp_rsi_os ? " 📉OS" : rsi_val <= 45 ? "" : " ⚠️RSI") : (rsi_val >= inp_rsi_ob ? " 📈OB" : rsi_val >= 55 ? "" : " ⚠️RSI")
-                    _sig_txt := "\n" + te + " " + str.tostring(_sig_sc, "#") + "pts [" + _sig_zt + "]" + rsi_ctx
-            color _sig_col = _is_long ? (_sig_sc >= 100 ? color.new(#00E5FF, 5) : color.new(color.lime, 5)) : (_sig_sc >= 100 ? color.new(#FF6B6B, 5) : color.new(color.red, 5))
-            label.new(bar_index, _is_long ? low : high, text=(_is_long ? "LONG" : "SHORT") + _sig_txt,
-                 style=_is_long ? label.style_label_up : label.style_label_down, color=_sig_col,
-                 textcolor=color.white, size=size.small, yloc=_is_long ? yloc.belowbar : yloc.abovebar)
+// V280: LONG/SHORT signal labels moved to VISUAL (hint system handles entry labels)
 
 float dist_to_bull = na
 float dist_to_bear = na
@@ -6109,29 +5379,7 @@ if array.size(zone_db) > 0
 // Equity curve for VISUAL plot
 float _equity_curve = sim_equity  // V275: use simulated equity
 
-// V269: Unit-test invariant checks on last bar ────────────────────────────
-var label _inv_label = na
-if barstate.islast
-    bool _inv_ok = true
-    string _inv_msg = ""
-    if na(z_score) or (z_score > 1e10 or z_score < -1e10)
-        _inv_ok := false
-        _inv_msg += "z_score=" + str.tostring(z_score) + " "
-    if na(rvol) or rvol < 0
-        _inv_ok := false
-        _inv_msg += "rvol=" + str.tostring(rvol) + " "
-    if na(atr_val) or atr_val <= 0
-        _inv_ok := false
-        _inv_msg += "atr=" + str.tostring(atr_val) + " "
-    if _kelly_f < 0 or _kelly_f > 1
-        _inv_ok := false
-        _inv_msg += "kelly=" + str.tostring(_kelly_f) + " "
-    if not na(_inv_label)
-        label.delete(_inv_label)
-    _inv_label := label.new(bar_index, high * 1.001,
-         _inv_ok ? "✅ INV OK" : "❌ INV FAIL: " + _inv_msg,
-         color=_inv_ok ? color.new(color.green, 80) : color.new(color.red, 50),
-         textcolor=color.white, size=size.tiny, style=label.style_label_down)
+// V280: Invariant check label moved to VISUAL
 
 // Кодирование направлений тренда как float:  1=bull, -1=bear, 0=flat
 float _eng_htf  = global_bull ? 1 : global_bear ? -1 : 0
@@ -6153,7 +5401,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(279.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(280.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -6226,27 +5474,7 @@ plot(nz(exp_tp1_price, 0.0),              "ENG: Sim TP1",      color=color.new(#
 plot(nz(exp_tp2_price, 0.0),              "ENG: Sim TP2",      color=color.new(#000000, 100))
 plot(nz(exp_sim_dir, 0.0),                "ENG: Sim Dir",      color=color.new(#000000, 100))
 //plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
-// ── PD visualization (line/box вместо plot/fill для экономии output-слотов) ──
-// Ранее использовалось 3×plot() + 2×fill() = 5 output-слотов.
-// Заменено на line.new()/box.new() которые НЕ считаются в лимит 64 output.
-var line _pd_ln_h = na
-var line _pd_ln_l = na
-var line _pd_ln_m = na
-var box  _pd_bx_u = na
-var box  _pd_bx_l = na
-if use_pd
-    bool _pd_chg = na(_pd_ln_h) or pd_high != nz(pd_high[1]) or pd_low != nz(pd_low[1]) or pd_mid != nz(pd_mid[1])
-    if _pd_chg
-        _pd_ln_h := line.new(bar_index, pd_high, bar_index, pd_high, color=color.new(color.red,   70))
-        _pd_ln_l := line.new(bar_index, pd_low,  bar_index, pd_low,  color=color.new(color.green, 70))
-        _pd_ln_m := line.new(bar_index, pd_mid,  bar_index, pd_mid,  color=color.new(color.gray,  50), style=line.style_dotted)
-        _pd_bx_u := box.new(bar_index, pd_high, bar_index, pd_mid, border_color=na, bgcolor=color.new(color.red,   90))
-        _pd_bx_l := box.new(bar_index, pd_mid,  bar_index, pd_low,  border_color=na, bgcolor=color.new(color.green, 90))
-    line.set_x2(_pd_ln_h, bar_index)
-    line.set_x2(_pd_ln_l, bar_index)
-    line.set_x2(_pd_ln_m, bar_index)
-    box.set_right(_pd_bx_u, bar_index)
-    box.set_right(_pd_bx_l, bar_index)
+// V280: PD visualization moved to VISUAL
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
 
