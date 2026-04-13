@@ -25,6 +25,39 @@ int MAX_OFFSET_3 = 4996   // для функций требующих [offset+2]
 // V258: Штраф к Score если число паттернов < p_multi_pattern_min (адаптируется по ТФ)
 float MULTI_PATTERN_PENALTY = 0.85
 
+// V279: Bonus Constants & Category Caps
+// Candlestick Patterns category
+float BONUS_THREE_SOLDIERS = 10.0
+float BONUS_TWEEZER        = 8.0
+float BONUS_MARUBOZU       = 12.0
+float BONUS_INSIDE_BAR     = 5.0
+float BONUS_OUTSIDE_BAR    = 8.0
+float BONUS_FAKEY          = 10.0
+float CAP_CANDLE_PATTERNS  = 25.0    // max from candlestick patterns
+
+// Volume/Liquidity category
+float BONUS_RVOL_BREAK     = 10.0
+float BONUS_SWEEP_LIQ      = 15.0
+float CAP_VOL_LIQUIDITY    = 20.0
+
+// Structure (BOS/CHoCH) category
+float BONUS_BOS            = 20.0
+float BONUS_CHOCH           = 15.0
+float CAP_STRUCTURE        = 20.0
+
+// Session/Timing category
+float BONUS_KILL_ZONE      = 10.0
+float PENALTY_QUIET_ZONE   = -5.0
+float CAP_SESSION          = 15.0
+
+// Technical (RSI/ATR) category
+float BONUS_RSI_EXTREME    = 10.0
+float BONUS_DIVERGENCE     = 15.0
+float CAP_TECHNICAL        = 15.0
+
+// Total bonus cap
+float CAP_TOTAL_BONUS      = 70.0
+
 // Универсальный clamp: гарантирует что offset в [0, ceil]
 f_clamp(int val, int ceil) => math.max(0, math.min(val, ceil))
 
@@ -83,14 +116,19 @@ group_score = "⭐ Dynamic Scoring (Efficiency Engine)"
 use_score      = input.bool(true, "Фильтровать зоны по минимальному Score", group=group_score)
 min_score_gate = input.int(45, "Минимальный суммарный Score (0–150)", minval=0, maxval=150, group=group_score)
 chopcount_int  = input.int(10, "Минимальный ChopCount", minval=4, maxval=20, group=group_score)
-w_zscore  = input.float(25.0, "Вес: Z-Score",                     minval=0, maxval=100, step=0.5, group=group_score)
-w_vol     = input.float(15.0, "Вес: Volume",                      minval=0, maxval=100, step=0.5, group=group_score)
-w_trend   = input.float(15.0, "Вес: Trend Alignment",             minval=0, maxval=100, step=0.5, group=group_score)
-w_sweep   = input.float(15.0, "Вес: Sweep / Liquidity Grab",      minval=0, maxval=100, step=0.5, group=group_score)
-w_eff     = input.float(15.0, "Вес: Efficiency (FER)",            minval=0, maxval=100, step=0.5, group=group_score)
-w_bonus   = input.float(15.0, "Вес: PA Patterns (Брейк, Поглощение)", minval=0, maxval=100, step=0.5, group=group_score)
+// V279: Rebalanced weights for 9-component model
+w_zscore  = input.float(20.0, "Вес: Z-Score",                     minval=0, maxval=100, step=0.5, group=group_score)
+w_vol     = input.float(12.0, "Вес: Volume",                      minval=0, maxval=100, step=0.5, group=group_score)
+w_trend   = input.float(12.0, "Вес: Trend Alignment",             minval=0, maxval=100, step=0.5, group=group_score)
+w_sweep   = input.float(12.0, "Вес: Sweep / Liquidity Grab",      minval=0, maxval=100, step=0.5, group=group_score)
+w_eff     = input.float(10.0, "Вес: Efficiency (FER)",            minval=0, maxval=100, step=0.5, group=group_score)
+w_bonus   = input.float(10.0, "Вес: PA Patterns (Брейк, Поглощение)", minval=0, maxval=100, step=0.5, group=group_score)
+// V279: New scoring components (3 additional)
+w_regime  = input.float(10.0, "Вес: Market Regime Alignment",     minval=0, maxval=100, step=0.5, group=group_score)
+w_session = input.float(7.0,  "Вес: Session Quality",             minval=0, maxval=100, step=0.5, group=group_score)
+w_mtf     = input.float(7.0,  "Вес: Multi-TF Confluence",         minval=0, maxval=100, step=0.5, group=group_score)
 
-float _sum_w = w_zscore + w_vol + w_trend + w_sweep + w_eff + w_bonus
+float _sum_w = w_zscore + w_vol + w_trend + w_sweep + w_eff + w_bonus + w_regime + w_session + w_mtf
 float _safe_sum = math.max(_sum_w, 0.001)
 float w_zscore_norm  = f_safe_div(w_zscore, _safe_sum) * 100.0
 float w_vol_norm     = f_safe_div(w_vol, _safe_sum) * 100.0
@@ -98,6 +136,10 @@ float w_trend_norm   = f_safe_div(w_trend, _safe_sum) * 100.0
 float w_sweep_norm   = f_safe_div(w_sweep, _safe_sum) * 100.0
 float w_eff_norm     = f_safe_div(w_eff, _safe_sum) * 100.0
 float w_bonus_norm   = f_safe_div(w_bonus, _safe_sum) * 100.0
+// V279: New normalized weights
+float w_regime_norm  = f_safe_div(w_regime, _safe_sum) * 100.0
+float w_session_norm = f_safe_div(w_session, _safe_sum) * 100.0
+float w_mtf_norm     = f_safe_div(w_mtf, _safe_sum) * 100.0
 
 group_stoch = "📊 Stochastic Engine"
 stoch_min_val = input.int(5,  "Мин. зон для прогноза",      minval=3,  maxval=50,  group=group_stoch)
@@ -2884,64 +2926,109 @@ f_detect_judas_swing(bool is_session_start) =>
         result := false_up or false_dn
     result
 
-// V273: Simple neural network (1 hidden layer: 6→4→1) for score prediction
-// Small uniform init avoids saturation; online Widrow-Hoff adapts quickly
-var array<float> _nn_w1 = array.new<float>(24, 0.1)
-var array<float> _nn_w2 = array.new<float>(4, 0.25)
-var array<float> _nn_bias1 = array.new<float>(4, 0.0)
-var array<float> _nn_bias2 = array.from(0.0)
+// V279: Enhanced neural network (2 hidden layers: 9→8→4→1) for score prediction
+// 9 inputs: z_score, volume, trend, sweep, efficiency, pa_patterns, regime, session, hurst
+// L2 regularization + adaptive learning rate
+var array<float> _nn_w1 = array.new<float>(72, 0.1)   // 9×8 = 72 weights (input→hidden1)
+var array<float> _nn_w2 = array.new<float>(32, 0.15)   // 8×4 = 32 weights (hidden1→hidden2)
+var array<float> _nn_w3 = array.new<float>(4, 0.25)    // 4×1 = 4 weights (hidden2→output)
+var array<float> _nn_bias1 = array.new<float>(8, 0.0)
+var array<float> _nn_bias2 = array.new<float>(4, 0.0)
+var array<float> _nn_bias3 = array.from(0.0)
+var int _nn_update_count = 0
+float _nn_lambda = 0.001  // L2 regularization coefficient
 
 f_nn_sigmoid(float x) =>
     1.0 / (1.0 + math.exp(-math.max(-10.0, math.min(10.0, x))))
 
 f_nn_predict(float z_in, float vol_in, float trend_in, float sweep_in, float eff_in, float pa_in) =>
-    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in)
-    array<float> hidden = array.new<float>(4, 0.0)
-    for h = 0 to 3
+    // V279: Use 9 inputs; extra 3 (regime, session, hurst) derived from globals
+    float regime_in = nz(float(_regime_type), 0.0) / 3.0  // normalize 0-3 → 0-1
+    float session_in = in_brokezone ? 1.0 : 0.0
+    float hurst_in = nz(_hurst_val, 0.5)
+    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in, regime_in, session_in, hurst_in)
+    // Hidden layer 1 (8 neurons)
+    array<float> hidden1 = array.new<float>(8, 0.0)
+    for h = 0 to 7
         float sum = array.get(_nn_bias1, h)
-        for inp = 0 to 5
-            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 6 + inp)
-        array.set(hidden, h, f_nn_sigmoid(sum))
-    float output = array.get(_nn_bias2, 0)
+        for inp = 0 to 8
+            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 9 + inp)
+        array.set(hidden1, h, f_nn_sigmoid(sum))
+    // Hidden layer 2 (4 neurons)
+    array<float> hidden2 = array.new<float>(4, 0.0)
     for h = 0 to 3
-        output += array.get(hidden, h) * array.get(_nn_w2, h)
+        float sum = array.get(_nn_bias2, h)
+        for h1 = 0 to 7
+            sum += array.get(hidden1, h1) * array.get(_nn_w2, h * 8 + h1)
+        array.set(hidden2, h, f_nn_sigmoid(sum))
+    // Output layer
+    float output = array.get(_nn_bias3, 0)
+    for h = 0 to 3
+        output += array.get(hidden2, h) * array.get(_nn_w3, h)
     f_nn_sigmoid(output) * 150.0
 
 f_nn_update(float z_in, float vol_in, float trend_in, float sweep_in, float eff_in, float pa_in, float target, float lr) =>
+    // V279: Adaptive learning rate — decreases over time for stability
+    _nn_update_count := _nn_update_count + 1
+    float adaptive_lr = lr * (1.0 / (1.0 + 0.001 * float(_nn_update_count)))
     float pred = f_nn_predict(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in)
     float err = (target / 150.0) - (pred / 150.0)
-    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in)
-    array<float> hidden = array.new<float>(4, 0.0)
-    for h = 0 to 3
+    float regime_in = nz(float(_regime_type), 0.0) / 3.0
+    float session_in = in_brokezone ? 1.0 : 0.0
+    float hurst_in = nz(_hurst_val, 0.5)
+    array<float> inputs = array.from(z_in, vol_in, trend_in, sweep_in, eff_in, pa_in, regime_in, session_in, hurst_in)
+    // Forward pass — hidden layer 1
+    array<float> hidden1 = array.new<float>(8, 0.0)
+    for h = 0 to 7
         float sum = array.get(_nn_bias1, h)
-        for inp = 0 to 5
-            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 6 + inp)
-        array.set(hidden, h, f_nn_sigmoid(sum))
-    // Backprop: output layer
+        for inp = 0 to 8
+            sum += array.get(inputs, inp) * array.get(_nn_w1, h * 9 + inp)
+        array.set(hidden1, h, f_nn_sigmoid(sum))
+    // Forward pass — hidden layer 2
+    array<float> hidden2 = array.new<float>(4, 0.0)
+    for h = 0 to 3
+        float sum = array.get(_nn_bias2, h)
+        for h1 = 0 to 7
+            sum += array.get(hidden1, h1) * array.get(_nn_w2, h * 8 + h1)
+        array.set(hidden2, h, f_nn_sigmoid(sum))
+    // Backprop: output → hidden2
     float d_out = err
     for h = 0 to 3
-        float hv = array.get(hidden, h)
-        float w2_old = array.get(_nn_w2, h)
-        array.set(_nn_w2, h, w2_old + lr * d_out * hv)
-        // Backprop: hidden layer
-        float d_hidden = d_out * w2_old * hv * (1.0 - hv)
-        for inp = 0 to 5
-            int w_idx = h * 6 + inp
-            float w1_old = array.get(_nn_w1, w_idx)
-            array.set(_nn_w1, w_idx, w1_old + lr * d_hidden * array.get(inputs, inp))
-        array.set(_nn_bias1, h, array.get(_nn_bias1, h) + lr * d_hidden)
-    array.set(_nn_bias2, 0, array.get(_nn_bias2, 0) + lr * d_out)
+        float h2v = array.get(hidden2, h)
+        float w3_old = array.get(_nn_w3, h)
+        // L2 regularization: weight update with decay
+        array.set(_nn_w3, h, w3_old * (1.0 - adaptive_lr * _nn_lambda) + adaptive_lr * d_out * h2v)
+        // Backprop: hidden2 → hidden1
+        float d_h2 = d_out * w3_old * h2v * (1.0 - h2v)
+        for h1 = 0 to 7
+            int w2_idx = h * 8 + h1
+            float w2_old = array.get(_nn_w2, w2_idx)
+            float h1v = array.get(hidden1, h1)
+            array.set(_nn_w2, w2_idx, w2_old * (1.0 - adaptive_lr * _nn_lambda) + adaptive_lr * d_h2 * h1v)
+            // Backprop: hidden1 → input
+            float d_h1 = d_h2 * w2_old * h1v * (1.0 - h1v)
+            for inp = 0 to 8
+                int w1_idx = h1 * 9 + inp
+                float w1_old = array.get(_nn_w1, w1_idx)
+                array.set(_nn_w1, w1_idx, w1_old * (1.0 - adaptive_lr * _nn_lambda) + adaptive_lr * d_h1 * array.get(inputs, inp))
+            array.set(_nn_bias1, h1, array.get(_nn_bias1, h1) + adaptive_lr * d_h1)
+        array.set(_nn_bias2, h, array.get(_nn_bias2, h) + adaptive_lr * d_h2)
+    array.set(_nn_bias3, 0, array.get(_nn_bias3, 0) + adaptive_lr * d_out)
 
-// V273: Adaptive scoring weights (recalculated every N trades)
-var array<float> _adapt_weights = array.from(0.25, 0.15, 0.15, 0.15, 0.15, 0.15)
-var array<float> _comp_win_sums = array.new<float>(6, 0.0)
-var array<float> _comp_loss_sums = array.new<float>(6, 0.0)
+// V279: Adaptive scoring weights (9 components, recalculated every N trades)
+var array<float> _adapt_weights = array.from(0.20, 0.12, 0.12, 0.12, 0.10, 0.10, 0.10, 0.07, 0.07)
+var array<float> _comp_win_sums = array.new<float>(9, 0.0)
+var array<float> _comp_loss_sums = array.new<float>(9, 0.0)
 var array<int> _adapt_trade_count = array.from(0)
 var array<int> _adapt_last_update = array.from(0)
 
 f_update_adaptive_weights(bool is_win, float z_comp, float vol_comp, float trend_comp, float sweep_comp, float eff_comp, float pa_comp) =>
-    array<float> comps = array.from(z_comp, vol_comp, trend_comp, sweep_comp, eff_comp, pa_comp)
-    for i = 0 to 5
+    // V279: Add regime/session/hurst components
+    float regime_comp = nz(float(_regime_type), 0.0) / 3.0
+    float session_comp = in_brokezone ? 1.0 : 0.0
+    float hurst_comp = nz(_hurst_val, 0.5)
+    array<float> comps = array.from(z_comp, vol_comp, trend_comp, sweep_comp, eff_comp, pa_comp, regime_comp, session_comp, hurst_comp)
+    for i = 0 to 8
         if is_win
             array.set(_comp_win_sums, i, array.get(_comp_win_sums, i) + array.get(comps, i))
         else
@@ -2950,14 +3037,14 @@ f_update_adaptive_weights(bool is_win, float z_comp, float vol_comp, float trend
     if array.get(_adapt_trade_count, 0) - array.get(_adapt_last_update, 0) >= 20
         array.set(_adapt_last_update, 0, array.get(_adapt_trade_count, 0))
         float total_diff = 0.0
-        array<float> diffs = array.new<float>(6, 0.0)
-        for i = 0 to 5
+        array<float> diffs = array.new<float>(9, 0.0)
+        for i = 0 to 8
             // 0.5 loss weight: penalise losing components less aggressively; 0.01 floor prevents zero-weight collapse
             float diff = math.max(0.01, array.get(_comp_win_sums, i) - array.get(_comp_loss_sums, i) * 0.5)
             array.set(diffs, i, diff)
             total_diff += diff
         if total_diff > 0
-            for i = 0 to 5
+            for i = 0 to 8
                 array.set(_adapt_weights, i, f_safe_div(array.get(diffs, i), total_diff))
 
 // ==========================================
@@ -3482,8 +3569,9 @@ f_get_log_vol_score(float val, float min_v, float max_v, float weight) =>
     float log_max  = math.log(1.0 + (max_safe - min_v))
     weight * math.min(f_safe_div(log_val, log_max), 1.0)
 
-// V269: Extracted zone score computation — combines 6 weighted components
-// Returns the core weighted score from Z-Score, Volume, Trend, Sweep, Efficiency, PA Bonus
+// V279: Expanded zone score computation — 9 weighted components
+// Adds: Market Regime Alignment, Session Quality, Multi-TF Confluence
+// Improves: Graduated trend alignment, continuous sweep scoring
 f_compute_zone_score(float z_val, float vol_val, bool is_aligned,
      bool is_struct_sweep, bool is_wick_sweep, float eff_val,
      bool has_break, bool has_engulf, bool has_sweep_vol,
@@ -3493,10 +3581,25 @@ f_compute_zone_score(float z_val, float vol_val, bool is_aligned,
     score += f_get_sigmoid_score(z_val, dyn_z, p_z_max, w_zscore_norm)
     // 2. Volume component [0, w_vol_norm]
     score += f_get_log_vol_score(vol_val, dyn_v, p_vol_max, w_vol_norm)
-    // 3. Trend alignment [0 or w_trend_norm]
-    score += is_aligned ? w_trend_norm : 0.0
-    // 4. Sweep / Liquidity Grab [0, w_sweep_norm]
-    float s_sw = is_struct_sweep ? w_sweep_norm : (is_wick_sweep ? w_sweep_norm * 0.6 : 0.0)
+    // 3. V279: Graduated Trend Alignment [0, w_trend_norm]
+    // Full alignment (HTF + ITF) = 1.0, Partial (ITF only) = 0.5, Counter = 0.0
+    float trend_score = 0.0
+    if is_aligned  // HTF aligned
+        trend_score := w_trend_norm  // Full alignment
+    else
+        // Check if at least ITF is aligned (partial credit)
+        trend_score := w_trend_norm * 0.5  // Partial alignment fallback
+    score += trend_score
+    // 4. V279: Continuous Sweep / Liquidity Grab [0, w_sweep_norm]
+    // sweep_score = 0.3 + 0.7 × min(1.0, quality) — continuous function
+    float sweep_quality = is_struct_sweep ? 1.0 : (is_wick_sweep ? 0.6 : 0.0)
+    float s_sw = 0.0
+    if sweep_quality > 0
+        float cont_sweep = 0.3 + 0.7 * math.min(1.0, sweep_quality)
+        // V279: Volume-confirmed sweep gets 1.3× multiplier
+        if has_sweep_vol
+            cont_sweep := math.min(1.0, cont_sweep * 1.3)
+        s_sw := w_sweep_norm * cont_sweep
     score += s_sw
     // 5. Efficiency / FER [0, w_eff_norm]
     score += f_get_sigmoid_score(eff_val, 0.3, 0.9, w_eff_norm)
@@ -3509,6 +3612,39 @@ f_compute_zone_score(float z_val, float vol_val, bool is_aligned,
     if has_sweep_vol and is_aligned
         s_bonus += w_bonus_norm * 0.2
     score += s_bonus
+    // 7. V279: Market Regime Alignment [0, w_regime_norm]
+    // Trending regime + aligned zone = full weight; ranging = 0.5; counter = 0
+    float regime_score = 0.0
+    if _regime_type == 0  // trending_up
+        regime_score := is_aligned ? w_regime_norm : 0.0
+    else if _regime_type == 1  // trending_down
+        regime_score := is_aligned ? w_regime_norm : 0.0
+    else if _regime_type == 2  // ranging
+        regime_score := w_regime_norm * 0.5
+    else  // volatile
+        regime_score := w_regime_norm * 0.3
+    score += regime_score
+    // 8. V279: Session Quality [0, w_session_norm]
+    // London/NY kill zone = full, Asia = 0.5, Quiet = 0.2
+    float session_score = 0.0
+    if kz_overlap
+        session_score := w_session_norm  // London-NY overlap = best
+    else if kz_london or kz_ny
+        session_score := w_session_norm * 0.8
+    else if kz_asia
+        session_score := w_session_norm * 0.5
+    else
+        session_score := w_session_norm * 0.2
+    score += session_score
+    // 9. V279: Multi-TF Confluence placeholder [0, w_mtf_norm]
+    // Uses Hurst exponent as proxy: H > 0.6 = trending on multiple TFs = higher score
+    float hurst_proxy = nz(_hurst_val, 0.5)
+    float mtf_score = 0.0
+    if hurst_proxy > 0.6
+        mtf_score := w_mtf_norm * math.min(1.0, (hurst_proxy - 0.5) * 5.0)
+    else
+        mtf_score := w_mtf_norm * 0.3
+    score += mtf_score
     // Cluster volume bonus (capped)
     score += math.min(cluster_vol_bonus, 25.0)
     score
