@@ -1,5 +1,9 @@
 // @version=6
-indicator("Trading Fluppy VISUAL",
+// ⚠️ DEPRECATED: V284 — VISUAL functionality is now integrated directly into ENGINE.
+// This standalone VISUAL indicator is kept for backward compatibility only.
+// For automatic connection without user intervention, use ENGINE directly — it includes
+// the full dashboard, trade hints, session boxes, PD bands, zone visualization, and equity curve.
+indicator("Trading Fluppy VISUAL [LEGACY]",
      overlay=true,
      max_labels_count=500,
      max_boxes_count=500,
@@ -168,9 +172,9 @@ zone_res_col  = input.color(color.new(#FF1744, 70), "Цвет: зоны сопр
 // Если ENGINE не подключён — используются локальные fallback-значения.
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 282.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 284.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
 // ── Автоопределение ENGINE по каналу Version ──
-float EXPECTED_ENG_VERSION = 282.0
+float EXPECTED_ENG_VERSION = 284.0
 bool  _auto_engine = math.round(eng_version) == EXPECTED_ENG_VERSION
 eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=275 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
 bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
@@ -207,13 +211,7 @@ eng_confluence   = input.source(close, "VIS: Confluence",   tooltip="→ ENG: Co
 eng_z_min        = input.source(close, "VIS: Z Min",        tooltip="→ ENG: Z Min | Диапазон: 0.1-5.0. Минимальный Z-Score порог", group=group_eng)
 eng_z_max        = input.source(close, "VIS: Z Max",        tooltip="→ ENG: Z Max | Диапазон: 1.0-15.0. Максимальный Z-Score порог", group=group_eng)
 eng_vol_max      = input.source(close, "VIS: Vol Max",      tooltip="→ ENG: Vol Max | Диапазон: 1.0-10.0. Максимальный RVOL порог", group=group_eng)
-eng_stoch_mu     = input.source(close, "VIS: Stoch Mu",     tooltip="→ ENG: Stoch Mu | Диапазон: >0 баров. Среднее время между зонами", group=group_eng)
-eng_stoch_sigma  = input.source(close, "VIS: Stoch Sigma",  tooltip="→ ENG: Stoch Sigma | Диапазон: ≥0. Стд.откл. времени между зонами", group=group_eng)
-eng_stoch_eta    = input.source(close, "VIS: Stoch Eta",    tooltip="→ ENG: Stoch Eta | Диапазон: ≥0 баров. Ожидаемое время до зоны", group=group_eng)
-eng_kelly_f      = input.source(close, "VIS: Kelly F",      tooltip="→ ENG: Kelly F | Диапазон: 0-1.0. Kelly Criterion оптимальная доля", group=group_eng)
-eng_sharpe       = input.source(close, "VIS: Sharpe",       tooltip="→ ENG: Sharpe | Диапазон: -∞..+∞ (годовой). Sharpe Ratio", group=group_eng)
-eng_sortino      = input.source(close, "VIS: Sortino",      tooltip="→ ENG: Sortino | Диапазон: -∞..+∞ (годовой). Sortino Ratio", group=group_eng)
-eng_mc_dd95      = input.source(close, "VIS: MC DD95",      tooltip="→ ENG: MC DD95 | Диапазон: 0-100%. Monte Carlo 95th pctile drawdown", group=group_eng)
+// V283: Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95 removed from ENGINE (dashboard-only metrics)
 eng_equity_curve = input.source(close, "VIS: Equity Curve",  tooltip="→ ENG: Equity Curve | Текущий капитал для мини-графика", group=group_eng)
 eng_top1_price   = input.source(close, "VIS: Top1 Price",    tooltip="→ ENG: Top1 Price | Цена лучшей зоны", group=group_eng)
 eng_top1_score   = input.source(close, "VIS: Top1 Score",    tooltip="→ ENG: Top1 Score | Score лучшей зоны (0-150)", group=group_eng)
@@ -320,14 +318,7 @@ float _struct_raw    = use_engine_data ? math.round(eng_struct_combo) : 0.0
 float v_bos_signal   = _struct_raw >= 5.0 ? 1.0 : _struct_raw <= -5.0 ? -1.0 : 0.0
 float v_choch_signal = _struct_raw - (v_bos_signal * 10.0)
 
-// V269: New channel decoders (stochastic, risk, version)
-float v_stoch_mu     = use_engine_data ? eng_stoch_mu     : 0.0
-float v_stoch_sigma  = use_engine_data ? eng_stoch_sigma  : 0.0
-float v_stoch_eta    = use_engine_data ? eng_stoch_eta    : 0.0
-float v_kelly_f      = use_engine_data ? eng_kelly_f      : 0.0
-float v_sharpe       = use_engine_data ? eng_sharpe       : 0.0
-float v_sortino      = use_engine_data ? eng_sortino      : 0.0
-float v_mc_dd95      = use_engine_data ? eng_mc_dd95      : 0.0
+// V283: Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95 removed — dashboard-only metrics
 float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
 // v_eng_version reads eng_version unconditionally (not gated by use_engine_data)
 // to enable auto-detection: when connected to ENGINE it returns 277.0, otherwise close price
@@ -499,7 +490,7 @@ string v_session  = _temp_s == "" ? "Quiet" : str.trim(_temp_s)
 // ==========================================
 // БЛОК 4: DASHBOARD
 // ==========================================
-var table dash = table.new(position.top_right, 2, 48, bgcolor=color.new(color.black, 40), border_width=1)
+var table dash = table.new(position.top_right, 2, 40, bgcolor=color.new(color.black, 40), border_width=1)
 
 f_dr(int row, string lbl, string value, color lc, color vc, string sz) =>
     table.cell(dash, 0, row, lbl, text_color=lc, text_size=sz)
@@ -583,30 +574,21 @@ if barstate.islast and show_dash
         f_dr(26, "SMC Cluster", cl_txt, color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
         f_dr(27, "Inv Dist (ATR)", str.tostring(v_inv_dist_sup, "#") + " / " + str.tostring(v_inv_dist_res, "#"), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
 
-        // V269: Risk Management rows
-        f_dr(28, "Kelly F", str.tostring(v_kelly_f, "#.###"), color.gray, v_kelly_f > 0.2 ? color.lime : (v_kelly_f > 0 ? color.white : color.red), t_sz)
-        string sharpe_txt = str.tostring(v_sharpe, "#.##") + " | Sort: " + str.tostring(v_sortino, "#.##")
-        color sharpe_col = v_sharpe > 1.0 ? color.lime : (v_sharpe > 0 ? color.white : color.red)
-        f_dr(29, "Sharpe/Sortino", sharpe_txt, color.gray, sharpe_col, t_sz)
-        f_dr(30, "MC DD95%", str.tostring(v_mc_dd95, "#.#") + "%", color.gray, v_mc_dd95 > 30 ? color.red : (v_mc_dd95 > 15 ? color.orange : color.lime), t_sz)
-
-        // V269: Stochastic model details
-        string stoch_detail = "μ=" + str.tostring(v_stoch_mu, "#.#") + " σ=" + str.tostring(v_stoch_sigma, "#.#") + " η=" + str.tostring(v_stoch_eta, "#.#")
-        f_dr(31, "Stoch μ/σ/η", v_d_n >= stoch_min_val ? stoch_detail : "Wait", color.aqua, color.white, t_sz)
+        // V283: Removed rows: Kelly F, Sharpe/Sortino, MC DD95%, Stoch μ/σ/η (dashboard-only metrics)
 
         // V270: Regime detection
         string regime_names = v_regime == 0.0 ? "Trending ↑ 🟢" : v_regime == 1.0 ? "Trending ↓ 🔴" : v_regime == 2.0 ? "Ranging ⚪" : "Volatile ⚡"
         string regime_advice = v_regime == 0.0 ? "Buy zones" : v_regime == 1.0 ? "Sell zones" : v_regime == 2.0 ? "Fade extremes" : "Wait / Reduce size"
-        f_dr(32, "Market Regime", regime_names + " → " + regime_advice, color.aqua, v_regime == 0 ? color.lime : v_regime == 1 ? color.red : v_regime == 3 ? color.orange : color.white, t_sz)
+        f_dr(28, "Market Regime", regime_names + " → " + regime_advice, color.aqua, v_regime == 0 ? color.lime : v_regime == 1 ? color.red : v_regime == 3 ? color.orange : color.white, t_sz)
 
         // V270: Hurst Exponent
         string hurst_txt = str.tostring(v_hurst, "#.##")
         string hurst_label = v_hurst > 0.6 ? "Trending" : v_hurst < 0.4 ? "Mean-Revert" : "Random Walk"
-        f_dr(33, "Hurst Exp", hurst_txt + " (" + hurst_label + ")", color.gray, v_hurst > 0.6 ? color.lime : v_hurst < 0.4 ? color.orange : color.white, t_sz)
+        f_dr(29, "Hurst Exp", hurst_txt + " (" + hurst_label + ")", color.gray, v_hurst > 0.6 ? color.lime : v_hurst < 0.4 ? color.orange : color.white, t_sz)
 
         // V270: CVD Divergence
         string cvd_txt = v_cvd_div > 0 ? "🟢 Bullish Div" : v_cvd_div < 0 ? "🔴 Bearish Div" : "⚪ None"
-        f_dr(34, "CVD Divergence", cvd_txt, color.gray, v_cvd_div > 0 ? color.lime : v_cvd_div < 0 ? color.red : color.white, t_sz)
+        f_dr(30, "CVD Divergence", cvd_txt, color.gray, v_cvd_div > 0 ? color.lime : v_cvd_div < 0 ? color.red : color.white, t_sz)
 
         // V270: Top Zone Info
         string top_z_txt = "N/A"
@@ -616,12 +598,12 @@ if barstate.islast and show_dash
             string dist_txt = not na(v_top1_dist) ? str.tostring(v_top1_dist, "#.#") + " ATR" : "N/A"
             top_z_txt := tier_txt + " @ " + str.tostring(v_top1_price, format.mintick) + " (" + str.tostring(v_top1_score, "#") + "pts) " + dist_txt
             top_z_col := v_top1_score >= 100 ? color.lime : v_top1_score >= 80 ? #00E5FF : color.white
-        f_dr(35, "Top Zone", top_z_txt, color.aqua, top_z_col, t_sz)
+        f_dr(31, "Top Zone", top_z_txt, color.aqua, top_z_col, t_sz)
 
         // V273: Point of Control (Volume Profile)
         string poc_txt = not na(v_poc_price) and v_poc_price > 0 ? f_mt(v_poc_price) : "N/A"
         color  poc_col = not na(v_poc_price) and v_poc_price > 0 ? (math.abs(close - v_poc_price) < nz(atr_val, 1.0) ? color.lime : color.white) : color.gray
-        f_dr(36, "Point of Control", poc_txt, color.gray, poc_col, t_sz)
+        f_dr(32, "Point of Control", poc_txt, color.gray, poc_col, t_sz)
 
         // V273: Market Microstructure (VCP, Squeeze, Absorption)
         string vcp_txt     = v_vcp > 0.5 ? "🟢" : "⚪"
@@ -629,14 +611,14 @@ if barstate.islast and show_dash
         string abs_txt     = v_absorption > 0.5 ? "🔵" : "⚪"
         string micro_txt   = "VCP:" + vcp_txt + " Sqz:" + sqz_txt + " Abs:" + abs_txt
         color  micro_col   = (v_vcp > 0.5 or v_squeeze > 0.5 or v_absorption > 0.5) ? color.lime : color.white
-        f_dr(37, "Microstructure", micro_txt, color.gray, micro_col, t_sz)
+        f_dr(33, "Microstructure", micro_txt, color.gray, micro_col, t_sz)
 
         // V273: Structure Breaks (BOS/CHoCH)
         string bos_txt   = v_bos_signal > 0.5 ? "🟢 Bull" : v_bos_signal < -0.5 ? "🔴 Bear" : "⚪ None"
         string choch_txt = v_choch_signal > 0.5 ? "🟢 Bull" : v_choch_signal < -0.5 ? "🔴 Bear" : "⚪ None"
         string struct_txt = "BOS:" + bos_txt + " CHoCH:" + choch_txt
         color  struct_col = (v_bos_signal != 0 or v_choch_signal != 0) ? (v_bos_signal > 0 or v_choch_signal > 0 ? color.lime : color.red) : color.white
-        f_dr(38, "Structure Breaks", struct_txt, color.gray, struct_col, t_sz)
+        f_dr(34, "Structure Breaks", struct_txt, color.gray, struct_col, t_sz)
 
         // Trade Hint status row
         // V275: Enhanced trade hint with R:R and direction
@@ -652,17 +634,17 @@ if barstate.islast and show_dash
             string _h_rr_txt_s = not na(_h_rr_s) ? " R:R " + str.tostring(_h_rr_s, "#.#") : ""
             hint_status_txt := "🔴 SHORT @ " + f_mt(nz(hint_entry_price, close)) + _h_rr_txt_s
         color  hint_status_col = hint_state == 1 ? color.lime : hint_state == -1 ? color.red : color.gray
-        f_dr(39, "Trade Hint", show_hints ? hint_status_txt : "OFF", color.aqua, show_hints ? hint_status_col : color.gray, t_sz)
+        f_dr(35, "Trade Hint", show_hints ? hint_status_txt : "OFF", color.aqua, show_hints ? hint_status_col : color.gray, t_sz)
 
         // V270: Version compatibility warning
         if use_engine_data and not v_version_ok
-            f_dr(40, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
+            f_dr(36, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
         // Standalone warning with connection hint
         if not use_engine_data
             string _standalone_hint = eng_connect_mode == "Auto" ? "Подключите VIS: Version → ENG: Version" : "Режим: Выкл (Force OFF)"
-            f_dr(41, "⚠️ STANDALONE", _standalone_hint, color.orange, color.yellow, t_sz)
+            f_dr(37, "⚠️ STANDALONE", _standalone_hint, color.orange, color.yellow, t_sz)
 else
-    table.clear(dash, 0, 0, 1, 47)
+    table.clear(dash, 0, 0, 1, 39)
 
 // V270: Equity curve + drawdown mini-graph in separate pane
 plot(v_equity_curve, "Equity Curve", color=color.new(color.lime, 30), linewidth=2, display=display.pane)
@@ -884,7 +866,7 @@ alertcondition(v_bos_signal < 0, title="📊 BOS Bearish", message="📊 Break o
 alertcondition(v_choch_signal > 0, title="🔄 CHoCH Bullish", message="🔄 Change of Character: Bullish")
 alertcondition(v_choch_signal < 0, title="🔄 CHoCH Bearish", message="🔄 Change of Character: Bearish")
 alertcondition(v_squeeze > 0.5, title="🔸 Keltner Squeeze", message="🔸 Keltner Squeeze активен — сжатие волатильности, ожидается импульс")
-alertcondition(v_mc_dd95 > 30, title="⚠️ Monte Carlo DD >30%", message="⚠️ Monte Carlo 95th percentile drawdown превысил 30%")
+// V283: alertcondition for MC DD95 removed (channel no longer exported from ENGINE)
 
 // Standalone warning label on chart with auto-detect hint
 var label _standalone_warn = na

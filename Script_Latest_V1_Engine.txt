@@ -374,6 +374,31 @@ use_major_bos    = input.bool(true,  "Major BOS фильтр (для SWING/MACRO
 use_asset_adapt  = input.bool(true,  "Авто-адаптация к типу инструмента (crypto/fut/stock)", group=group_fut)
 use_pv_sizing    = input.bool(true,  "Учитывать Point Value при расчёте лота (фьючерсы)", group=group_fut)
 
+// ── V284: VISUAL DASHBOARD & HINT INPUTS (merged from VISUAL) ────────────────
+group_dash_ui  = "📊 Dashboard UI"
+show_dash      = input.bool(true,  "Показывать дашборд", group=group_dash_ui)
+dash_collapse  = input.bool(false, "Сворачивать дашборд", group=group_dash_ui)
+dash_size      = input.string("Small", "Размер текста", options=["Tiny","Small","Normal"], group=group_dash_ui)
+
+group_hints = "💡 Торговые подсказки"
+show_hints       = input.bool(true, "Показывать подсказки входа/выхода", tooltip="Подсказки в реальном времени: вход в зонах поддержки/сопротивления, выход при структурных сигналах.", group=group_hints)
+hint_zone_dist   = input.float(2.0, "Макс. дистанция до зоны (ATR)", minval=0.5, maxval=5.0, step=0.5, tooltip="Максимальное расстояние от цены до зоны для сигнала входа (в единицах ATR)", group=group_hints)
+hint_min_score   = input.int(40, "Мин. Score зоны", minval=10, maxval=150, step=10, tooltip="Минимальный балл зоны для генерации подсказки на вход", group=group_hints)
+
+// V280: Session boxes
+group_sess_v  = "🕐 Session Boxes (Visual)"
+show_sess_v   = input.bool(false, "Показывать сессионные боксы", group=group_sess_v)
+
+// V280: PD band visualization
+group_pd_v    = "📊 Premium / Discount (Visual)"
+show_pd_v     = input.bool(true, "Показывать PD-зоны", group=group_pd_v)
+
+// V282: Support/Resistance zone visualization
+group_zones_v = "🟢🔴 Зоны поддержки / сопротивления (Visual)"
+show_zones_v  = input.bool(true, "Показывать зоны (S/R)", tooltip="Отображает ближайшие зоны поддержки (зелёные) и сопротивления (красные). Показывает до 2 ближайших зон каждого направления.", group=group_zones_v)
+zone_sup_col  = input.color(color.new(#00C853, 70), "Цвет: зоны поддержки", group=group_zones_v)
+zone_res_col  = input.color(color.new(#FF1744, 70), "Цвет: зоны сопротивления", group=group_zones_v)
+
 // ── V260: Цветовые константы (только используемые в ENGINE) ──────────────────
 color C_BLACK100 = color.new(color.black, 100)
 
@@ -5483,8 +5508,10 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // ⚠️ ЛИМИТ TradingView: indicator() допускает МАКСИМУМ 64 output-слота.
 //    В output-слоты считаются: plot(), plotshape(), plotchar(), plotarrow(),
 //    plotbar(), plotcandle(), bgcolor(), barcolor(), fill().
-//    Текущее использование: 63 / 64 (ENG: каналы + VWAP visible plot).
+//    Текущее использование: 58 / 64 (ENG: каналы + VWAP + Equity + DD plots).
 //    V282: 8 zone boundary channels added (Sup1/2 top/bot, Res1/2 top/bot).
+//    V283: Removed 7 dashboard-only channels (Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95).
+//    V284: Added 2 VISUAL plots (Equity Curve + Drawdown) — total 58/64.
 // ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
 // При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
@@ -5494,7 +5521,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(282.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(284.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -5529,15 +5556,9 @@ plot(nz(float(min_confluence), 2.0),    "ENG: Confluence",   color=color.new(#00
 plot(nz(p_z_min, 0.85),                 "ENG: Z Min",        color=color.new(#000000, 100))
 plot(nz(p_z_max, 5.0),                  "ENG: Z Max",        color=color.new(#000000, 100))
 plot(nz(p_vol_max, 2.5),                "ENG: Vol Max",      color=color.new(#000000, 100))
-// V269: Stochastic exports
-plot(nz(d_mu, 0.0),                     "ENG: Stoch Mu",     color=color.new(#000000, 100))
-plot(nz(d_sig, 0.0),                    "ENG: Stoch Sigma",  color=color.new(#000000, 100))
-plot(nz(d_eta, 0.0),                    "ENG: Stoch Eta",    color=color.new(#000000, 100))
-// V269: Risk metrics
-plot(nz(_kelly_f, 0.0),                 "ENG: Kelly F",      color=color.new(#000000, 100))
-plot(nz(_sharpe, 0.0),                  "ENG: Sharpe",       color=color.new(#000000, 100))
-plot(nz(_sortino, 0.0),                 "ENG: Sortino",      color=color.new(#000000, 100))
-plot(nz(_mc_dd95, 0.0),                 "ENG: MC DD95",      color=color.new(#000000, 100))
+// V283: Removed 7 dashboard-only channels (Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95)
+// to free plot slots. These metrics were displayed in VISUAL dashboard only,
+// with no impact on zone search logic or chart rendering.
 plot(nz(_equity_curve, SIM_INITIAL_CAPITAL), "ENG: Equity Curve", color=color.new(#000000, 100))
 // V270: New export channels for enhanced VISUAL dashboard
 // V273-fix: uncommented Top1 zone channels for VISUAL dashboard
@@ -5610,3 +5631,545 @@ alertcondition(_alert_imb_zone, title="⚡ Imbalance Zone", message="Imbalance z
 alertcondition(_alert_vcp_zone, title="🔻 VCP Zone", message="VCP compression zone on {{ticker}} {{interval}}")
 alertcondition(_alert_acc_zone, title="📊 Accumulation/Distribution", message="Wyckoff A/D zone on {{ticker}} {{interval}}")
 alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi-bar rejection on {{ticker}} {{interval}}")
+
+// ==========================================
+// БЛОК 10: INTEGRATED VISUAL (V284: merged from VISUAL indicator)
+// ==========================================
+// V284: Все визуализации (дашборд, подсказки, сессии, PD, зоны, equity curve)
+// теперь интегрированы напрямую в ENGINE. Это устраняет необходимость
+// ручного подключения VISUAL через input.source() — все данные доступны автоматически.
+
+// ── Хелперы визуализации ──────────────────────────────────────────────────
+f_hint_tier(float score) =>
+    score >= 100 ? "BEST" : score >= 80 ? "STRONG" : score >= 40 ? "NORMAL" : "PIVOT"
+
+// ── Derived display variables (direct from ENGINE — no input.source needed) ──
+bool  v_global_bull  = global_bull
+bool  v_global_bear  = global_bear
+bool  v_itf_bull     = itf_bull
+bool  v_itf_bear     = itf_bear
+bool  v_major_bull   = major_bull_trend
+float v_vwap_val     = vwap_val
+float v_z_score      = nz(z_score, 0.0)
+float v_rvol         = nz(rvol, 0.0)
+float v_dist_bull    = nz(dist_to_bull, 0.0)
+float v_dist_bear    = nz(dist_to_bear, 0.0)
+float v_d_prob       = nz(d_prob, 0.0)
+int   v_d_n          = nz(d_n, 0)
+float v_d_discount   = nz(d_discount, 0.0)
+int   v_total_tr     = _rm_trades
+int   v_wins         = _rm_wins
+float v_gross_profit = sim_gross_profit
+float v_gross_loss   = sim_gross_loss
+float v_equity       = sim_equity
+float v_dd_pct       = dd_pct
+int   v_cnt_sup      = cnt_sup
+int   v_cnt_res      = cnt_res
+int   v_cnt_bb       = cnt_bb
+int   v_cnt_rz       = cnt_rz
+float v_safe_pv      = safe_pv
+float v_vol_ratio    = vol_ratio_c
+float v_htf_vol      = htf_vol_ctx_c
+float v_max_hist     = float(p_max_history)
+float v_fvg_min      = p_fvg_min
+float v_fvg_max      = p_fvg_max
+float v_min_confl    = float(min_confluence)
+float v_z_min        = p_z_min
+float v_z_max        = p_z_max
+float v_vol_max      = p_vol_max
+float v_stoch_mu     = nz(d_mu, 0.0)
+float v_stoch_sigma  = nz(d_sig, 0.0)
+float v_stoch_eta    = nz(d_eta, 0.0)
+float v_kelly_f      = nz(_kelly_f, 0.0)
+float v_sharpe       = nz(_sharpe, 0.0)
+float v_sortino      = nz(_sortino, 0.0)
+float v_mc_dd95      = nz(_mc_dd95, 0.0)
+float v_equity_curve = nz(_equity_curve, SIM_INITIAL_CAPITAL)
+float v_top1_price   = _top1_zone_price
+float v_top1_score   = nz(_top1_zone_score, 0.0)
+float v_top1_dist    = _top1_zone_dist
+float v_regime       = float(_regime_type)
+float v_hurst        = nz(_hurst_val, 0.5)
+float v_cvd_div      = nz(cvd_div_signal, 0.0)
+float v_poc_price    = _poc_price
+float v_bos_signal   = bos_bull ? 1.0 : bos_bear ? -1.0 : 0.0
+float v_choch_signal = choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0
+float v_vcp          = _is_vcp ? 1.0 : 0.0
+float v_squeeze      = _is_squeeze ? 1.0 : 0.0
+float v_absorption   = _is_absorption ? 1.0 : 0.0
+float v_sim_entry    = nz(exp_entry_price, 0.0)
+float v_sim_sl       = nz(exp_sl_price, 0.0)
+float v_sim_tp1      = nz(exp_tp1_price, 0.0)
+float v_sim_tp2      = nz(exp_tp2_price, 0.0)
+float v_sim_dir      = nz(exp_sim_dir, 0.0)
+bool  v_sim_in_long  = v_sim_dir > 0.5
+bool  v_sim_in_short = v_sim_dir < -0.5
+bool  v_sim_in_trade = v_sim_in_long or v_sim_in_short
+float v_sup1_top     = _exp_sup1_top
+float v_sup1_bot     = _exp_sup1_bot
+float v_sup2_top     = _exp_sup2_top
+float v_sup2_bot     = _exp_sup2_bot
+float v_res1_top     = _exp_res1_top
+float v_res1_bot     = _exp_res1_bot
+float v_res2_top     = _exp_res2_top
+float v_res2_bot     = _exp_res2_bot
+
+// Derived values
+float v_win_rate = v_total_tr > 0 ? f_safe_div(v_wins * 100.0, v_total_tr) : 0.0
+float v_pf       = v_gross_loss != 0 ? f_safe_div(v_gross_profit, math.max(math.abs(v_gross_loss), 0.001)) : na
+
+// Auto-tuner display values (direct from ENGINE)
+float v_piv_l_sup    = float(p_pivot_left)
+float v_piv_r_sup    = float(p_pivot_right)
+float v_piv_l_res    = float(p_pivot_left_res)
+float v_piv_r_res    = float(p_pivot_right_res)
+float v_ob_len_sup   = float(p_ob_len)
+float v_ob_len_res   = float(p_ob_len_res)
+float v_cluster_tol  = nz(atr_val, 1.0) * inp_cluster_tol
+float v_inv_dist_sup = inp_inv_dist * nz(atr_val, 1.0)
+float v_inv_dist_res = inp_inv_dist_r * nz(atr_val, 1.0)
+
+// Определение типа актива
+string v_asset_label = "UNKNOWN"
+if str.contains(syminfo.type, "crypto")
+    v_asset_label := "CRYPTO"
+else if str.contains(syminfo.type, "futures") or str.contains(syminfo.type, "fund")
+    v_asset_label := "FUTURES"
+else if str.contains(syminfo.type, "forex")
+    v_asset_label := "FOREX"
+else if str.contains(syminfo.type, "stock")
+    v_asset_label := "STOCK"
+else if str.contains(syminfo.type, "index")
+    v_asset_label := "INDEX"
+
+// Определение сессии
+f_vis_in_session(string sess_spec) =>
+    string tz = sess_timezone == "" ? syminfo.timezone : sess_timezone
+    not na(time(timeframe.period, sess_spec, tz))
+bool _kz_asia    = f_vis_in_session(sess_asia_t)
+bool _kz_london  = f_vis_in_session(sess_lond_t)
+bool _kz_ny      = f_vis_in_session(sess_ny_t)
+bool _kz_overlap = f_vis_in_session(sess_ovrl_t)
+string _temp_s   = (_kz_asia ? "Asia " : "") + (_kz_london ? "London " : "") + (_kz_ny ? "NY " : "") + (_kz_overlap ? "Overlap" : "")
+string v_session  = _temp_s == "" ? "Quiet" : str.trim(_temp_s)
+
+// ── ТОРГОВЫЕ ПОДСКАЗКИ — ЛОГИКА (Entry/Exit State Machine) ───────────────
+var int   hint_state       = 0
+var float hint_entry_price = na
+var float hint_sl_price    = na
+var float hint_tp1_price   = na
+var float hint_tp2_price   = na
+var int   hint_entry_bar   = na
+
+// Проверки зон
+bool _hint_has_zone        = not na(v_top1_price) and v_top1_score >= hint_min_score
+bool _hint_zone_near       = _hint_has_zone and not na(v_top1_dist) and v_top1_dist >= -0.5 and v_top1_dist <= hint_zone_dist
+bool _hint_zone_is_support = _hint_has_zone and v_top1_price < close
+bool _hint_zone_is_resist  = _hint_has_zone and v_top1_price > close
+
+// Sync with sim state — detect entry/exit transitions
+bool _eng_entered_long  = v_sim_in_long  and (hint_state != 1)
+bool _eng_entered_short = v_sim_in_short and (hint_state != -1)
+bool _eng_exited_long   = hint_state == 1  and not v_sim_in_long
+bool _eng_exited_short  = hint_state == -1 and not v_sim_in_short
+
+// Conditions: sim state + zone proximity
+bool _entry_long_ok  = _eng_entered_long  and v_sim_entry > 0 and _hint_zone_near
+bool _entry_short_ok = _eng_entered_short and v_sim_entry > 0 and _hint_zone_near
+bool _exit_long_ok   = _eng_exited_long
+bool _exit_short_ok  = _eng_exited_short
+
+// Fallback zone-based hints (when sim not active)
+if not v_sim_in_trade and hint_state == 0
+    bool _hint_vwap_ok = not na(v_vwap_val)
+    _entry_long_ok  := _hint_zone_near and _hint_zone_is_support and
+         (v_global_bull or v_itf_bull) and _hint_vwap_ok and close >= v_vwap_val and v_regime != 3.0
+    _entry_short_ok := _hint_zone_near and _hint_zone_is_resist and
+         (v_global_bear or v_itf_bear) and _hint_vwap_ok and close <= v_vwap_val and v_regime != 3.0
+if not v_sim_in_trade and hint_state != 0
+    _exit_long_ok   := hint_state == 1 and (v_bos_signal < -0.5 or v_choch_signal < -0.5 or (v_global_bear and v_itf_bear) or v_regime == 3.0 or (_hint_zone_near and _hint_zone_is_resist))
+    _exit_short_ok  := hint_state == -1 and (v_bos_signal > 0.5 or v_choch_signal > 0.5 or (v_global_bull and v_itf_bull) or v_regime == 3.0 or (_hint_zone_near and _hint_zone_is_support))
+
+float _hint_saved_entry = hint_entry_price
+
+bool hint_entry_long  = false
+bool hint_entry_short = false
+bool hint_exit_long   = false
+bool hint_exit_short  = false
+
+if barstate.isconfirmed
+    if _entry_long_ok
+        hint_entry_long  := true
+        hint_state       := 1
+        hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
+        hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
+        hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
+        hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
+        hint_entry_bar   := bar_index
+    else if _entry_short_ok
+        hint_entry_short := true
+        hint_state       := -1
+        hint_entry_price := v_sim_entry > 0 ? v_sim_entry : close
+        hint_sl_price    := v_sim_sl  > 0 ? v_sim_sl  : na
+        hint_tp1_price   := v_sim_tp1 > 0 ? v_sim_tp1 : na
+        hint_tp2_price   := v_sim_tp2 > 0 ? v_sim_tp2 : na
+        hint_entry_bar   := bar_index
+    else if _exit_long_ok
+        hint_exit_long   := true
+        hint_state       := 0
+        hint_entry_price := na
+        hint_sl_price    := na
+        hint_tp1_price   := na
+        hint_tp2_price   := na
+        hint_entry_bar   := na
+    else if _exit_short_ok
+        hint_exit_short  := true
+        hint_state       := 0
+        hint_entry_price := na
+        hint_sl_price    := na
+        hint_tp1_price   := na
+        hint_tp2_price   := na
+        hint_entry_bar   := na
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────
+var table dash = table.new(position.top_right, 2, 42, bgcolor=color.new(color.black, 40), border_width=1)
+
+f_dr(int row, string lbl, string value, color lc, color vc, string sz) =>
+    table.cell(dash, 0, row, lbl, text_color=lc, text_size=sz)
+    table.cell(dash, 1, row, value, text_color=vc, text_size=sz)
+
+f_fmt_dist(float dist, color break_col) =>
+    string txt = "N/A"
+    color  col = color.gray
+    if not na(dist)
+        if dist <= 0
+            txt := "⚡ BREAK!"
+            col := break_col
+        else
+            txt := str.tostring(dist,"#") + " tks"
+            col := color.white
+    [txt, col]
+
+if barstate.islast and show_dash
+    string t_sz  = dash_size == "Tiny" ? size.tiny : (dash_size == "Small" ? size.small : size.normal)
+    string h_txt = dash_collapse ? "TFA V1.0 (MINI)" : "Trading Fluppy ENGINE 🟢 (Integrated V284)"
+
+    table.cell(dash, 0, 0, h_txt, text_color=color.white, bgcolor=color.new(color.teal, 55), text_size=t_sz)
+    table.cell(dash, 1, 0, dash_collapse ? "➕" : "➖", text_color=color.white, bgcolor=color.new(color.purple, 55), text_size=t_sz)
+
+    if not dash_collapse
+        string trend_txt  = v_global_bull ? "BULLISH 🟢" : v_global_bear ? "BEARISH 🔴" : "FLAT ⚪"
+        string itf_txt    = v_itf_bull ? "🟢 ITF Bull" : v_itf_bear ? "🔴 ITF Bear" : "⚪ ITF Flat"
+        string vwap_txt   = close > v_vwap_val ? "Above 🟢" : "Below 🔴"
+        string major_txt  = v_major_bull ? "BULL META 🟢" : "BEAR META 🔴"
+
+        f_dr(1,  "Asset Type", v_asset_label + (v_safe_pv != 1.0 ? " PV=" + str.tostring(v_safe_pv,"#.##") : ""), color.gray, color.yellow, t_sz)
+        f_dr(2,  "HTF Trend", trend_txt, color.gray, v_global_bull ? color.lime : color.red, t_sz)
+        f_dr(3,  "ITF Trend", itf_txt, color.gray, v_itf_bull ? color.lime : color.orange, t_sz)
+        f_dr(4,  "Major BOS", major_txt, color.gray, v_major_bull ? color.lime : color.red, t_sz)
+        f_dr(5,  "VWAP", vwap_txt, color.gray, close > v_vwap_val ? color.lime : color.orange, t_sz)
+        f_dr(6,  "Z-Score", str.tostring(v_z_score,"#.##") + " σ", color.gray, v_z_score > v_z_max ? #FFD700 : (v_z_score > v_z_min ? color.lime : color.white), t_sz)
+        f_dr(7,  "RVOL", str.tostring(v_rvol,"#.##") + "×", color.gray, v_rvol > v_vol_max ? #FFD700 : (v_rvol > 1.0 ? color.lime : color.red), t_sz)
+        f_dr(8,  "Hist Depth", str.tostring(v_max_hist, "#") + " (" + hist_mode + ")", color.gray, color.white, t_sz)
+
+        string _zones_txt = "Sup:" + str.tostring(v_cnt_sup, "#") + " Res:" + str.tostring(v_cnt_res, "#") + " BB:" + str.tostring(v_cnt_bb, "#") + " RZ:" + str.tostring(v_cnt_rz, "#")
+        f_dr(9,  "Active Zones", _zones_txt, color.gray, color.white, t_sz)
+        f_dr(10, "Total Trades", str.tostring(v_total_tr, "#"), color.gray, color.white, t_sz)
+        f_dr(11, "Win Rate", str.tostring(v_win_rate,"#.#") + "%", color.gray, v_win_rate > 50 ? color.lime : color.orange, t_sz)
+        f_dr(12, "Profit Factor", na(v_pf) ? "N/A" : str.tostring(v_pf,"#.##"), color.gray, (not na(v_pf) and v_pf > 1.5) ? color.lime : color.white, t_sz)
+
+        f_dr(13, "Cur DD", str.tostring(v_dd_pct,"#.#") + "%", color.white, v_dd_pct > 10 ? color.orange : color.lime, t_sz)
+        f_dr(14, "Equity", str.tostring(v_equity, format.mintick), color.gray, color.white, t_sz)
+        f_dr(15, "Active Session", v_session, color.gray, color.white, t_sz)
+
+        [txt_bull_dist, col_bull_dist] = f_fmt_dist(v_dist_bull, color.lime)
+        f_dr(16, "To Bull Break", txt_bull_dist, color.gray, col_bull_dist, t_sz)
+
+        [txt_bear_dist, col_bear_dist] = f_fmt_dist(v_dist_bear, color.red)
+        f_dr(17, "To Bear Break", txt_bear_dist, color.gray, col_bear_dist, t_sz)
+
+        string ui_prob = v_d_n >= stoch_min_val ? str.tostring(v_d_prob,"#.#") + "%" : "Wait (" + str.tostring(v_d_n, "#") + "/" + str.tostring(stoch_min_val, "#") + ")"
+        string ui_disc = v_d_discount > 0 ? " (-" + str.tostring(v_d_discount*100,"#") + "%)" : ""
+        color col_prob = v_d_prob >= 90.0 ? color.fuchsia : (v_d_prob > 60.0 ? color.orange : color.lime)
+        f_dr(18, "Min Confluence", str.tostring(v_min_confl, "#") + " factors" + (use_mss_confirm ? " +MSS" : ""), color.aqua, color.white, t_sz)
+        f_dr(19, "FVG Range (ATR)", str.tostring(v_fvg_min,"#.####") + " – " + str.tostring(v_fvg_max,"#.#"), color.gray, color.white, t_sz)
+        f_dr(20, "Stochastic P", ui_prob + ui_disc, color.aqua, col_prob, t_sz)
+        f_dr(21, "Sup Pivot (L/R)", (tuning_mode == "Auto-Adaptive" ? "🔄 " : "") + str.tostring(v_piv_l_sup, "#") + " / " + str.tostring(v_piv_r_sup, "#"), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+        f_dr(22, "Res Pivot (L/R)", (tuning_mode == "Auto-Adaptive" ? "🔄 " : "") + str.tostring(v_piv_l_res, "#") + " / " + str.tostring(v_piv_r_res, "#"), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+        f_dr(23, "Zone Age Max", use_zone_age_fade ? str.tostring(zone_max_age, "#") + " bars" : "OFF", color.gray, use_zone_age_fade ? color.white : color.gray, t_sz)
+        f_dr(24, "Asset Adapt", use_asset_adapt ? "ON (" + v_asset_label + ")" : "OFF", color.gray, use_asset_adapt ? color.lime : color.gray, t_sz)
+        string vr_txt = str.tostring(v_vol_ratio, "#.##") + "× | HTF:" + str.tostring(v_htf_vol, "#.##") + "×"
+        color  vr_col = v_vol_ratio > 1.5 ? color.orange : v_vol_ratio < 0.7 ? color.aqua : color.lime
+        f_dr(25, "Vol Ratio", vr_txt, color.gray, vr_col, t_sz)
+        string cl_txt = "S:" + str.tostring(v_ob_len_sup, "#") + " R:" + str.tostring(v_ob_len_res, "#") + " Tol:" + str.tostring(v_cluster_tol, "#.##")
+        f_dr(26, "SMC Cluster", cl_txt, color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+        f_dr(27, "Inv Dist (ATR)", str.tostring(v_inv_dist_sup, "#") + " / " + str.tostring(v_inv_dist_res, "#"), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
+
+        // V284: Restored dashboard rows (now directly available, no plot channel needed)
+        f_dr(28, "Kelly F", str.tostring(v_kelly_f, "#.###"), color.gray, v_kelly_f > 0.2 ? color.lime : (v_kelly_f > 0 ? color.white : color.red), t_sz)
+        string sharpe_txt = str.tostring(v_sharpe, "#.##") + " | Sort: " + str.tostring(v_sortino, "#.##")
+        color sharpe_col = v_sharpe > 1.0 ? color.lime : (v_sharpe > 0 ? color.white : color.red)
+        f_dr(29, "Sharpe/Sortino", sharpe_txt, color.gray, sharpe_col, t_sz)
+        f_dr(30, "MC DD95%", str.tostring(v_mc_dd95, "#.#") + "%", color.gray, v_mc_dd95 > 30 ? color.red : (v_mc_dd95 > 15 ? color.orange : color.lime), t_sz)
+
+        // Stochastic model details
+        string stoch_detail = "μ=" + str.tostring(v_stoch_mu, "#.#") + " σ=" + str.tostring(v_stoch_sigma, "#.#") + " η=" + str.tostring(v_stoch_eta, "#.#")
+        f_dr(31, "Stoch μ/σ/η", v_d_n >= stoch_min_val ? stoch_detail : "Wait", color.aqua, color.white, t_sz)
+
+        // Regime detection
+        string regime_names = v_regime == 0.0 ? "Trending ↑ 🟢" : v_regime == 1.0 ? "Trending ↓ 🔴" : v_regime == 2.0 ? "Ranging ⚪" : "Volatile ⚡"
+        string regime_advice = v_regime == 0.0 ? "Buy zones" : v_regime == 1.0 ? "Sell zones" : v_regime == 2.0 ? "Fade extremes" : "Wait / Reduce size"
+        f_dr(32, "Market Regime", regime_names + " → " + regime_advice, color.aqua, v_regime == 0 ? color.lime : v_regime == 1 ? color.red : v_regime == 3 ? color.orange : color.white, t_sz)
+
+        // Hurst Exponent
+        string hurst_txt = str.tostring(v_hurst, "#.##")
+        string hurst_label = v_hurst > 0.6 ? "Trending" : v_hurst < 0.4 ? "Mean-Revert" : "Random Walk"
+        f_dr(33, "Hurst Exp", hurst_txt + " (" + hurst_label + ")", color.gray, v_hurst > 0.6 ? color.lime : v_hurst < 0.4 ? color.orange : color.white, t_sz)
+
+        // CVD Divergence
+        string cvd_txt = v_cvd_div > 0 ? "🟢 Bullish Div" : v_cvd_div < 0 ? "🔴 Bearish Div" : "⚪ None"
+        f_dr(34, "CVD Divergence", cvd_txt, color.gray, v_cvd_div > 0 ? color.lime : v_cvd_div < 0 ? color.red : color.white, t_sz)
+
+        // Top Zone Info
+        string top_z_txt = "N/A"
+        color top_z_col = color.gray
+        if not na(v_top1_price) and v_top1_score > 0
+            string tier_txt = v_top1_score >= 100 ? "BEST" : v_top1_score >= 80 ? "STRONG" : v_top1_score >= 40 ? "NORMAL" : "PIVOT"
+            string dist_txt = not na(v_top1_dist) ? str.tostring(v_top1_dist, "#.#") + " ATR" : "N/A"
+            top_z_txt := tier_txt + " @ " + str.tostring(v_top1_price, format.mintick) + " (" + str.tostring(v_top1_score, "#") + "pts) " + dist_txt
+            top_z_col := v_top1_score >= 100 ? color.lime : v_top1_score >= 80 ? #00E5FF : color.white
+        f_dr(35, "Top Zone", top_z_txt, color.aqua, top_z_col, t_sz)
+
+        // Point of Control
+        string poc_txt = not na(v_poc_price) and v_poc_price > 0 ? str.tostring(v_poc_price, format.mintick) : "N/A"
+        color  poc_col = not na(v_poc_price) and v_poc_price > 0 ? (math.abs(close - v_poc_price) < nz(atr_val, 1.0) ? color.lime : color.white) : color.gray
+        f_dr(36, "Point of Control", poc_txt, color.gray, poc_col, t_sz)
+
+        // Market Microstructure
+        string vcp_txt     = v_vcp > 0.5 ? "🟢" : "⚪"
+        string sqz_txt     = v_squeeze > 0.5 ? "🟡" : "⚪"
+        string abs_txt     = v_absorption > 0.5 ? "🔵" : "⚪"
+        string micro_txt   = "VCP:" + vcp_txt + " Sqz:" + sqz_txt + " Abs:" + abs_txt
+        color  micro_col   = (v_vcp > 0.5 or v_squeeze > 0.5 or v_absorption > 0.5) ? color.lime : color.white
+        f_dr(37, "Microstructure", micro_txt, color.gray, micro_col, t_sz)
+
+        // Structure Breaks
+        string bos_txt   = v_bos_signal > 0.5 ? "🟢 Bull" : v_bos_signal < -0.5 ? "🔴 Bear" : "⚪ None"
+        string choch_txt = v_choch_signal > 0.5 ? "🟢 Bull" : v_choch_signal < -0.5 ? "🔴 Bear" : "⚪ None"
+        string struct_txt = "BOS:" + bos_txt + " CHoCH:" + choch_txt
+        color  struct_col = (v_bos_signal != 0 or v_choch_signal != 0) ? (v_bos_signal > 0 or v_choch_signal > 0 ? color.lime : color.red) : color.white
+        f_dr(38, "Structure Breaks", struct_txt, color.gray, struct_col, t_sz)
+
+        // Trade Hint status
+        string hint_status_txt = "⏳ Ожидание входа"
+        if hint_state == 1
+            float _h_risk = not na(hint_sl_price) ? (nz(hint_entry_price, close) - hint_sl_price) : na
+            float _h_rr = not na(_h_risk) and _h_risk > 0 and not na(hint_tp1_price) ? f_safe_div(hint_tp1_price - nz(hint_entry_price, close), _h_risk) : na
+            string _h_rr_txt = not na(_h_rr) ? " R:R " + str.tostring(_h_rr, "#.#") : ""
+            hint_status_txt := "🟢 LONG @ " + str.tostring(nz(hint_entry_price, close), format.mintick) + _h_rr_txt
+        else if hint_state == -1
+            float _h_risk_s = not na(hint_sl_price) ? (hint_sl_price - nz(hint_entry_price, close)) : na
+            float _h_rr_s = not na(_h_risk_s) and _h_risk_s > 0 and not na(hint_tp1_price) ? f_safe_div(nz(hint_entry_price, close) - hint_tp1_price, _h_risk_s) : na
+            string _h_rr_txt_s = not na(_h_rr_s) ? " R:R " + str.tostring(_h_rr_s, "#.#") : ""
+            hint_status_txt := "🔴 SHORT @ " + str.tostring(nz(hint_entry_price, close), format.mintick) + _h_rr_txt_s
+        color  hint_status_col = hint_state == 1 ? color.lime : hint_state == -1 ? color.red : color.gray
+        f_dr(39, "Trade Hint", show_hints ? hint_status_txt : "OFF", color.aqua, show_hints ? hint_status_col : color.gray, t_sz)
+else
+    table.clear(dash, 0, 0, 1, 41)
+
+// ── Equity curve + drawdown plots ─────────────────────────────────────────
+plot(v_equity_curve, "Equity Curve", color=color.new(color.lime, 30), linewidth=2, display=display.pane)
+float v_peak_eq = ta.highest(v_equity_curve, 500)
+float v_drawdown = v_peak_eq > 0 ? f_safe_div(v_peak_eq - v_equity_curve, v_peak_eq) * 100.0 : 0.0
+plot(-v_drawdown, "Drawdown %", color=color.new(color.red, 50), linewidth=1, display=display.pane)
+
+// ── ВИЗУАЛИЗАЦИЯ ТОРГОВЫХ ПОДСКАЗОК ───────────────────────────────────────
+if show_hints
+    if hint_entry_long
+        float _el_risk = not na(hint_sl_price) and hint_entry_price > hint_sl_price ? (hint_entry_price - hint_sl_price) : na
+        float _el_rr1  = not na(_el_risk) and _el_risk > 0 and not na(hint_tp1_price) ? f_safe_div(hint_tp1_price - hint_entry_price, _el_risk) : na
+        string _el_rr_txt = not na(_el_rr1) ? "\nR:R " + str.tostring(_el_rr1, "#.#") + ":1" : ""
+        string _el_sl_txt = not na(hint_sl_price) ? "\nSL: " + str.tostring(hint_sl_price, format.mintick) : ""
+        string _el_tp_txt = not na(hint_tp1_price) ? "\nTP1: " + str.tostring(hint_tp1_price, format.mintick) : ""
+        string _el_tp2_txt = not na(hint_tp2_price) ? " | TP2: " + str.tostring(hint_tp2_price, format.mintick) : ""
+        string _el_txt = "🟢 ВХОД LONG\n" + str.tostring(nz(hint_entry_price, close), format.mintick) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)" + _el_rr_txt + _el_sl_txt + _el_tp_txt + _el_tp2_txt
+        label.new(bar_index, low, _el_txt,
+             style=label.style_label_up, color=color.new(#00C853, 10),
+             textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
+    if hint_entry_short
+        float _es_risk = not na(hint_sl_price) and hint_sl_price > hint_entry_price ? (hint_sl_price - hint_entry_price) : na
+        float _es_rr1  = not na(_es_risk) and _es_risk > 0 and not na(hint_tp1_price) ? f_safe_div(hint_entry_price - hint_tp1_price, _es_risk) : na
+        string _es_rr_txt = not na(_es_rr1) ? "\nR:R " + str.tostring(_es_rr1, "#.#") + ":1" : ""
+        string _es_sl_txt = not na(hint_sl_price) ? "\nSL: " + str.tostring(hint_sl_price, format.mintick) : ""
+        string _es_tp_txt = not na(hint_tp1_price) ? "\nTP1: " + str.tostring(hint_tp1_price, format.mintick) : ""
+        string _es_tp2_txt = not na(hint_tp2_price) ? " | TP2: " + str.tostring(hint_tp2_price, format.mintick) : ""
+        string _es_txt = "🔴 ВХОД SHORT\n" + str.tostring(nz(hint_entry_price, close), format.mintick) + "\n" + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)" + _es_rr_txt + _es_sl_txt + _es_tp_txt + _es_tp2_txt
+        label.new(bar_index, high, _es_txt,
+             style=label.style_label_down, color=color.new(#FF1744, 10),
+             textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
+    if hint_exit_long
+        float _pnl_l = close - nz(_hint_saved_entry, close)
+        string _pnl_l_txt = (_pnl_l >= 0 ? "+" : "") + str.tostring(_pnl_l, format.mintick)
+        string _reason_l = "Структурный"
+        if not na(nz(hint_sl_price[1])) and low <= nz(hint_sl_price[1])
+            _reason_l := "❌ SL Hit"
+        else if not na(nz(hint_tp2_price[1])) and high >= nz(hint_tp2_price[1])
+            _reason_l := "🎯 TP2 Hit"
+        else if not na(nz(hint_tp1_price[1])) and high >= nz(hint_tp1_price[1])
+            _reason_l := "🎯 TP1 Hit"
+        else if v_bos_signal < -0.5
+            _reason_l := "BOS ↓"
+        else if v_choch_signal < -0.5
+            _reason_l := "CHoCH ↓"
+        else if v_global_bear and v_itf_bear
+            _reason_l := "Тренд ↓"
+        else if v_regime == 3.0
+            _reason_l := "Волатильность"
+        color _xl_col = _pnl_l >= 0 ? color.new(#00C853, 20) : color.new(#FF1744, 20)
+        string _xl_txt = "⬜ ВЫХОД LONG\n" + str.tostring(close, format.mintick) + "\nP&L: " + _pnl_l_txt + "\n" + _reason_l
+        label.new(bar_index, high, _xl_txt,
+             style=label.style_label_down, color=_xl_col,
+             textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
+    if hint_exit_short
+        float _pnl_s = nz(_hint_saved_entry, close) - close
+        string _pnl_s_txt = (_pnl_s >= 0 ? "+" : "") + str.tostring(_pnl_s, format.mintick)
+        string _reason_s = "Структурный"
+        if not na(nz(hint_sl_price[1])) and high >= nz(hint_sl_price[1])
+            _reason_s := "❌ SL Hit"
+        else if not na(nz(hint_tp2_price[1])) and low <= nz(hint_tp2_price[1])
+            _reason_s := "🎯 TP2 Hit"
+        else if not na(nz(hint_tp1_price[1])) and low <= nz(hint_tp1_price[1])
+            _reason_s := "🎯 TP1 Hit"
+        else if v_bos_signal > 0.5
+            _reason_s := "BOS ↑"
+        else if v_choch_signal > 0.5
+            _reason_s := "CHoCH ↑"
+        else if v_global_bull and v_itf_bull
+            _reason_s := "Тренд ↑"
+        else if v_regime == 3.0
+            _reason_s := "Волатильность"
+        color _xs_col = _pnl_s >= 0 ? color.new(#00C853, 20) : color.new(#FF1744, 20)
+        string _xs_txt = "⬜ ВЫХОД SHORT\n" + str.tostring(close, format.mintick) + "\nP&L: " + _pnl_s_txt + "\n" + _reason_s
+        label.new(bar_index, low, _xs_txt,
+             style=label.style_label_up, color=_xs_col,
+             textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
+
+// ── Session Boxes ─────────────────────────────────────────────────────────
+f_vis_draw_session(string sess_spec, color c_sess) =>
+    bool in_sess       = f_vis_in_session(sess_spec)
+    bool prev_in_sess  = bar_index > 0 ? in_sess[1] : false
+    bool session_start = in_sess and not prev_in_sess
+    bool session_end   = not in_sess and prev_in_sess
+    var box   s_box    = na
+    var float s_high   = na
+    var float s_low    = na
+    if session_start
+        s_high := high
+        s_low  := low
+        s_box  := box.new(bar_index, high, bar_index + 1, low, border_color=na, bgcolor=c_sess, xloc=xloc.bar_index)
+    if in_sess
+        s_high := math.max(s_high, high)
+        s_low  := math.min(s_low,  low)
+        if not na(s_box)
+            box.set_top(s_box, s_high)
+            box.set_bottom(s_box, s_low)
+            box.set_right(s_box, bar_index + 1)
+    if session_end and not na(s_box)
+        box.set_right(s_box, bar_index)
+    in_sess
+
+if show_sess_v
+    f_vis_draw_session(sess_asia_t, c_asia)
+    f_vis_draw_session(sess_lond_t, c_lond)
+    f_vis_draw_session(sess_ny_t,   c_ny)
+    f_vis_draw_session(sess_ovrl_t, c_ovrl)
+
+var label _sess_lbl_v = na
+if barstate.islast and show_sess_v
+    if not na(_sess_lbl_v)
+        label.delete(_sess_lbl_v)
+    string _st = (_kz_asia ? "Asia " : "") + (_kz_london ? "London " : "") + (_kz_ny ? "NY " : "") + (_kz_overlap ? "Overlap" : "")
+    string _cs = _st == "" ? "Quiet" : str.trim(_st)
+    color _sc = _kz_overlap ? color.red : _kz_ny ? color.purple : _kz_london ? color.orange : _kz_asia ? color.blue : color.gray
+    _sess_lbl_v := label.new(bar_index + 5, high, text="Session: " + _cs,
+         color=color.new(_sc, 70), textcolor=color.white, style=label.style_label_left, size=size.small)
+
+// ── PD Band Visualization ─────────────────────────────────────────────────
+var line _vis_pd_ln_h = na
+var line _vis_pd_ln_l = na
+var line _vis_pd_ln_m = na
+var box  _vis_pd_bx_u = na
+var box  _vis_pd_bx_l = na
+if show_pd_v
+    float _pd_h = na
+    float _pd_l = na
+    float _pd_m = na
+    if not na(v_dist_bull) and not na(v_dist_bear) and v_dist_bull != 0 and v_dist_bear != 0
+        _pd_h := close + v_dist_bull * syminfo.mintick
+        _pd_l := close - v_dist_bear * syminfo.mintick
+        _pd_m := (_pd_h + _pd_l) / 2.0
+    if not na(_pd_h) and not na(_pd_l)
+        bool _chg = na(_vis_pd_ln_h) or _pd_h != nz(_pd_h[1]) or _pd_l != nz(_pd_l[1])
+        if _chg
+            _vis_pd_ln_h := line.new(bar_index, _pd_h, bar_index, _pd_h, color=color.new(color.red,   70))
+            _vis_pd_ln_l := line.new(bar_index, _pd_l, bar_index, _pd_l, color=color.new(color.green, 70))
+            _vis_pd_ln_m := line.new(bar_index, _pd_m, bar_index, _pd_m, color=color.new(color.gray,  50), style=line.style_dotted)
+            _vis_pd_bx_u := box.new(bar_index, _pd_h, bar_index, _pd_m, border_color=na, bgcolor=color.new(color.red,   90))
+            _vis_pd_bx_l := box.new(bar_index, _pd_m, bar_index, _pd_l, border_color=na, bgcolor=color.new(color.green, 90))
+        line.set_x2(_vis_pd_ln_h, bar_index)
+        line.set_x2(_vis_pd_ln_l, bar_index)
+        line.set_x2(_vis_pd_ln_m, bar_index)
+        box.set_right(_vis_pd_bx_u, bar_index)
+        box.set_right(_vis_pd_bx_l, bar_index)
+
+// ── Support / Resistance Zone Visualization ───────────────────────────────
+var box _vis_z_sup1 = na
+var box _vis_z_sup2 = na
+var box _vis_z_res1 = na
+var box _vis_z_res2 = na
+if show_zones_v
+    if not na(_vis_z_sup1)
+        box.delete(_vis_z_sup1)
+    if not na(_vis_z_sup2)
+        box.delete(_vis_z_sup2)
+    if not na(_vis_z_res1)
+        box.delete(_vis_z_res1)
+    if not na(_vis_z_res2)
+        box.delete(_vis_z_res2)
+    _vis_z_sup1 := na
+    _vis_z_sup2 := na
+    _vis_z_res1 := na
+    _vis_z_res2 := na
+    int _zbox_left = bar_index - 50
+    if v_sup1_top > 0 and v_sup1_bot > 0 and v_sup1_top > v_sup1_bot
+        _vis_z_sup1 := box.new(_zbox_left, v_sup1_top, bar_index + 5, v_sup1_bot,
+             border_color=color.new(zone_sup_col, 20),
+             bgcolor=zone_sup_col, border_width=2, xloc=xloc.bar_index)
+    if v_sup2_top > 0 and v_sup2_bot > 0 and v_sup2_top > v_sup2_bot
+        _vis_z_sup2 := box.new(_zbox_left, v_sup2_top, bar_index + 5, v_sup2_bot,
+             border_color=color.new(zone_sup_col, 30),
+             bgcolor=color.new(zone_sup_col, 80),
+             border_width=1, xloc=xloc.bar_index)
+    if v_res1_top > 0 and v_res1_bot > 0 and v_res1_top > v_res1_bot
+        _vis_z_res1 := box.new(_zbox_left, v_res1_top, bar_index + 5, v_res1_bot,
+             border_color=color.new(zone_res_col, 20),
+             bgcolor=zone_res_col, border_width=2, xloc=xloc.bar_index)
+    if v_res2_top > 0 and v_res2_bot > 0 and v_res2_top > v_res2_bot
+        _vis_z_res2 := box.new(_zbox_left, v_res2_top, bar_index + 5, v_res2_bot,
+             border_color=color.new(zone_res_col, 30),
+             bgcolor=color.new(zone_res_col, 80),
+             border_width=1, xloc=xloc.bar_index)
+
+// ── VISUAL Alert Conditions ───────────────────────────────────────────────
+alertcondition(hint_entry_long, title="💡 Hint: ВХОД LONG", message="💡 Подсказка: ВХОД LONG — цена у зоны поддержки, тренд бычий")
+alertcondition(hint_entry_short, title="💡 Hint: ВХОД SHORT", message="💡 Подсказка: ВХОД SHORT — цена у зоны сопротивления, тренд медвежий")
+alertcondition(hint_exit_long, title="💡 Hint: ВЫХОД LONG", message="💡 Подсказка: ВЫХОД LONG — структурный сигнал на закрытие позиции")
+alertcondition(hint_exit_short, title="💡 Hint: ВЫХОД SHORT", message="💡 Подсказка: ВЫХОД SHORT — структурный сигнал на закрытие позиции")
+alertcondition(not na(v_top1_dist) and v_top1_dist >= 0 and v_top1_dist < 1.0 and v_top1_score >= 100, title="🔔 Price near BEST zone", message="🔔 Цена подходит к BEST зоне (< 1 ATR)")
+alertcondition(v_cvd_div != 0, title="⚡ CVD Divergence detected", message="⚡ CVD дивергенция обнаружена — потенциальный разворот")
+alertcondition(v_bos_signal > 0, title="📊 BOS Bullish", message="📊 Break of Structure: Bullish")
+alertcondition(v_bos_signal < 0, title="📊 BOS Bearish", message="📊 Break of Structure: Bearish")
+alertcondition(v_choch_signal > 0, title="🔄 CHoCH Bullish", message="🔄 Change of Character: Bullish")
+alertcondition(v_choch_signal < 0, title="🔄 CHoCH Bearish", message="🔄 Change of Character: Bearish")
+alertcondition(v_squeeze > 0.5, title="🔸 Keltner Squeeze", message="🔸 Keltner Squeeze активен — сжатие волатильности, ожидается импульс")
+alertcondition(v_mc_dd95 > 30, title="⚠️ Monte Carlo DD >30%", message="⚠️ Monte Carlo 95th percentile drawdown превысил 30%")
