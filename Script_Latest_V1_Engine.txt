@@ -353,7 +353,8 @@ zone_transp_pivot  = input.int(80, "Заливка PIVOT (% прозрачнос
 
 // ── НОВОЕ V249: Визуальные опции для зон ──────────────────────────────────
 group_vis2  = "🎨 Zone Visual Enhancements"
-use_glow_best      = input.bool(true,  "Glow-эффект для BEST зон (двойная рамка)", group=group_vis2)
+// V281: use_glow_best also controls glow for STRONG zones (score ≥ 70); name kept for backwards compatibility
+use_glow_best      = input.bool(true,  "Glow-эффект для BEST/STRONG зон (двойная рамка)", group=group_vis2)
 use_health_bar     = input.bool(true,  "Health Bar внутри зон (% оставшегося здоровья)", group=group_vis2)
 use_bb_arrow       = input.bool(true,  "Стрелка направления на Breaker Block", group=group_vis2)
 use_fvg_connector  = input.bool(false, "Соединительная линия FVG → Zone", group=group_vis2)
@@ -872,7 +873,7 @@ if tuning_mode == "Auto-Adaptive"
     var array<int>   TF_CL_MAX  = array.from(12,  12,   8,    8,    8)    // cluster limit
     var array<float> TF_SUP_PL  = array.from(5.0,  6.0,  12.0, 24.0, 31.0) // support pivot left base
     var array<float> TF_SUP_PR  = array.from(3.0,  3.0,  3.0,  2.0,  2.0)  // support pivot right base
-    var array<float> TF_RES_PL  = array.from(15.0, 12.0, 5.0,  5.0,  5.0)  // resistance pivot left base (V281: rebalanced MICRO/SCALP for more zones)
+    var array<float> TF_RES_PL  = array.from(15.0, 12.0, 5.0,  5.0,  5.0)  // resistance pivot left base [MICRO, SCALP, DAY, SWING, MACRO] (V281: MICRO 60→15, SCALP 18→12 for more zones)
     var array<float> TF_RES_PR  = array.from(6.0,  3.0,  3.0,  2.0,  2.0)  // resistance pivot right base
 
     // ── Dynamic Cluster Sizes (via lookup) ───────────────────────────────
