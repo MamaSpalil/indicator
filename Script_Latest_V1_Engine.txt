@@ -2349,7 +2349,9 @@ f_detect_vcp_zone() =>
 // V279: Multi-bar rejection detection
 // Multiple consecutive candles rejecting from same level
 f_detect_multi_bar_rejection(bool is_bull, int lookback) =>
-    float ref_level = is_bull ? ta.lowest(low, lookback) : ta.highest(high, lookback)
+    float _mbr_lowest  = ta.lowest(low, lookback)
+    float _mbr_highest = ta.highest(high, lookback)
+    float ref_level = is_bull ? _mbr_lowest : _mbr_highest
     float curr_atr = nz(atr_val, 1.0)
     float tol = curr_atr * 0.15
     int rej_count = 0
@@ -4109,6 +4111,11 @@ f_create_new_zones() =>
     int _pre_rz_off_s  = not na(last_sh_i) ? (bar_index - last_sh_i) : 0
     int _pre_rz_safe_s = f_clamp(_pre_rz_off_s, MAX_OFFSET)
     bool _pre_rspike_s = f_rz_rspike_scan(_pre_rz_safe_s, false, _mem_rvol)
+    // V279-fix: pre-compute ta-dependent zone detectors outside conditionals for per-bar consistency
+    [_pre_acc_range, _pre_is_acc, _pre_is_dist, _pre_acc_h, _pre_acc_l, _pre_acc_score] = f_detect_accumulation_distribution()
+    [_pre_vcp_valid, _pre_vcp_score, _pre_vcp_h, _pre_vcp_l, _pre_vcp_squeeze] = f_detect_vcp_zone()
+    [_pre_mbr_b_valid, _pre_mbr_b_count, _pre_mbr_b_score, _pre_mbr_b_level] = f_detect_multi_bar_rejection(true, 8)
+    [_pre_mbr_s_valid, _pre_mbr_s_count, _pre_mbr_s_score, _pre_mbr_s_level] = f_detect_multi_bar_rejection(false, 8)
     
     bool allow        = (not use_adx or not global_flat)
     bool confirmed_bar = barstate.isconfirmed
@@ -4545,80 +4552,76 @@ f_create_new_zones() =>
 
         // ── V279: Accumulation/Distribution Zones ─────────────────────────
         if confirmed_bar and in_window and use_acc_zones
-            [_acc_range, _is_acc, _is_dist, _acc_h, _acc_l, _acc_score] = f_detect_accumulation_distribution()
-            if _acc_range and _acc_score >= float(p_min_score) * 0.5
+            if _pre_acc_range and _pre_acc_score >= float(p_min_score) * 0.5
                 bool acc_dup = false
                 for z in zone_db
                     if (z.z_type == "ACC" or z.z_type == "DST") and z.active and (bar_index - z.created_at) < inp_acc_min_bars
                         acc_dup := true
                 if not acc_dup
-                    string acc_type = _is_acc ? "ACC" : "DST"
-                    string acc_tier = f_tier(_acc_score)
+                    string acc_type = _pre_is_acc ? "ACC" : "DST"
+                    string acc_tier = f_tier(_pre_acc_score)
                     color acc_col = c_acc_base
-                    box bx_acc = box.new(bar_index - inp_acc_min_bars, _acc_h, bar_index + 5, _acc_l,
+                    box bx_acc = box.new(bar_index - inp_acc_min_bars, _pre_acc_h, bar_index + 5, _pre_acc_l,
                          border_color = color.new(acc_col, 0),
-                         bgcolor = f_zone_bg(acc_col, f_score_to_transp(_acc_score)),
+                         bgcolor = f_zone_bg(acc_col, f_score_to_transp(_pre_acc_score)),
                          border_style = line.style_dotted,
                          xloc = xloc.bar_index)
-                    Zone acc_z = f_make_zone(bar_index, _acc_h, _acc_l, _is_acc, acc_type, _acc_score, acc_tier, na, (_acc_h + _acc_l) / 2.0, bx_acc, na, "None", acc_type + " Score=" + str.tostring(_acc_score, "#.0"), "Wyckoff")
+                    Zone acc_z = f_make_zone(bar_index, _pre_acc_h, _pre_acc_l, _pre_is_acc, acc_type, _pre_acc_score, acc_tier, na, (_pre_acc_h + _pre_acc_l) / 2.0, bx_acc, na, "None", acc_type + " Score=" + str.tostring(_pre_acc_score, "#.0"), "Wyckoff")
                     array.push(zone_db, acc_z)
 
         // ── V279: VCP Zones ───────────────────────────────────────────────
         if confirmed_bar and in_window and use_vcp_zones
-            [_vcp_valid, _vcp_score, _vcp_h, _vcp_l, _vcp_squeeze] = f_detect_vcp_zone()
-            if _vcp_valid and _vcp_score >= float(p_min_score) * 0.5
+            if _pre_vcp_valid and _pre_vcp_score >= float(p_min_score) * 0.5
                 bool vcp_dup = false
                 for z in zone_db
                     if z.z_type == "VCP" and z.active and (bar_index - z.created_at) < 10
                         vcp_dup := true
                 if not vcp_dup
-                    string vcp_tier = f_tier(_vcp_score)
-                    string vcp_info = _vcp_squeeze ? "Sqz+VCP" : "VCP"
-                    box bx_vcp = box.new(bar_index - 10, _vcp_h, bar_index + 5, _vcp_l,
+                    string vcp_tier = f_tier(_pre_vcp_score)
+                    string vcp_info = _pre_vcp_squeeze ? "Sqz+VCP" : "VCP"
+                    box bx_vcp = box.new(bar_index - 10, _pre_vcp_h, bar_index + 5, _pre_vcp_l,
                          border_color = color.new(c_vcp_base, 0),
-                         bgcolor = f_zone_bg(c_vcp_base, f_score_to_transp(_vcp_score)),
+                         bgcolor = f_zone_bg(c_vcp_base, f_score_to_transp(_pre_vcp_score)),
                          border_style = line.style_dashed,
                          xloc = xloc.bar_index)
-                    Zone vcp_z = f_make_zone(bar_index, _vcp_h, _vcp_l, true, "VCP", _vcp_score, vcp_tier, na, (_vcp_h + _vcp_l) / 2.0, bx_vcp, na, "None", vcp_info + " Score=" + str.tostring(_vcp_score, "#.0"), vcp_info)
+                    Zone vcp_z = f_make_zone(bar_index, _pre_vcp_h, _pre_vcp_l, true, "VCP", _pre_vcp_score, vcp_tier, na, (_pre_vcp_h + _pre_vcp_l) / 2.0, bx_vcp, na, "None", vcp_info + " Score=" + str.tostring(_pre_vcp_score, "#.0"), vcp_info)
                     array.push(zone_db, vcp_z)
 
         // ── V279: Multi-Bar Rejection (enhanced RZ) ──────────────────────
         if confirmed_bar and in_window and use_multi_rej
             // Bull multi-bar rejection
-            [_mbr_b_valid, _mbr_b_count, _mbr_b_score, _mbr_b_level] = f_detect_multi_bar_rejection(true, 8)
-            if _mbr_b_valid and _mbr_b_score >= float(p_min_score) * 0.6
+            if _pre_mbr_b_valid and _pre_mbr_b_score >= float(p_min_score) * 0.6
                 bool mbr_b_dup = false
                 for z in zone_db
-                    if z.z_type == "MBR" and z.is_bull and z.active and math.abs(z.bot - _mbr_b_level) < nz(atr_val, 1.0) * 0.3
+                    if z.z_type == "MBR" and z.is_bull and z.active and math.abs(z.bot - _pre_mbr_b_level) < nz(atr_val, 1.0) * 0.3
                         mbr_b_dup := true
                 if not mbr_b_dup
                     float mbr_b_top = close
-                    float mbr_b_bot = _mbr_b_level
-                    string mbr_b_tier = f_tier(_mbr_b_score)
+                    float mbr_b_bot = _pre_mbr_b_level
+                    string mbr_b_tier = f_tier(_pre_mbr_b_score)
                     box bx_mbr_b = box.new(bar_index - 8, mbr_b_top, bar_index + 5, mbr_b_bot,
                          border_color = color.new(c_rz_bull, 30),
-                         bgcolor = f_zone_bg(c_rz_bull, f_score_to_transp(_mbr_b_score)),
+                         bgcolor = f_zone_bg(c_rz_bull, f_score_to_transp(_pre_mbr_b_score)),
                          border_style = line.style_dotted,
                          xloc = xloc.bar_index)
-                    Zone mbr_b = f_make_zone(bar_index, mbr_b_top, mbr_b_bot, true, "MBR", _mbr_b_score, mbr_b_tier, na, (mbr_b_top + mbr_b_bot) / 2.0, bx_mbr_b, na, "None", "MBR×" + str.tostring(_mbr_b_count), "MultiRej")
+                    Zone mbr_b = f_make_zone(bar_index, mbr_b_top, mbr_b_bot, true, "MBR", _pre_mbr_b_score, mbr_b_tier, na, (mbr_b_top + mbr_b_bot) / 2.0, bx_mbr_b, na, "None", "MBR×" + str.tostring(_pre_mbr_b_count), "MultiRej")
                     array.push(zone_db, mbr_b)
             // Bear multi-bar rejection
-            [_mbr_s_valid, _mbr_s_count, _mbr_s_score, _mbr_s_level] = f_detect_multi_bar_rejection(false, 8)
-            if _mbr_s_valid and _mbr_s_score >= float(p_min_score) * 0.6
+            if _pre_mbr_s_valid and _pre_mbr_s_score >= float(p_min_score) * 0.6
                 bool mbr_s_dup = false
                 for z in zone_db
-                    if z.z_type == "MBR" and not z.is_bull and z.active and math.abs(z.top - _mbr_s_level) < nz(atr_val, 1.0) * 0.3
+                    if z.z_type == "MBR" and not z.is_bull and z.active and math.abs(z.top - _pre_mbr_s_level) < nz(atr_val, 1.0) * 0.3
                         mbr_s_dup := true
                 if not mbr_s_dup
-                    float mbr_s_top = _mbr_s_level
+                    float mbr_s_top = _pre_mbr_s_level
                     float mbr_s_bot = close
-                    string mbr_s_tier = f_tier(_mbr_s_score)
+                    string mbr_s_tier = f_tier(_pre_mbr_s_score)
                     box bx_mbr_s = box.new(bar_index - 8, mbr_s_top, bar_index + 5, mbr_s_bot,
                          border_color = color.new(c_rz_bear, 30),
-                         bgcolor = f_zone_bg(c_rz_bear, f_score_to_transp(_mbr_s_score)),
+                         bgcolor = f_zone_bg(c_rz_bear, f_score_to_transp(_pre_mbr_s_score)),
                          border_style = line.style_dotted,
                          xloc = xloc.bar_index)
-                    Zone mbr_s = f_make_zone(bar_index, mbr_s_top, mbr_s_bot, false, "MBR", _mbr_s_score, mbr_s_tier, na, (mbr_s_top + mbr_s_bot) / 2.0, bx_mbr_s, na, "None", "MBR×" + str.tostring(_mbr_s_count), "MultiRej")
+                    Zone mbr_s = f_make_zone(bar_index, mbr_s_top, mbr_s_bot, false, "MBR", _pre_mbr_s_score, mbr_s_tier, na, (mbr_s_top + mbr_s_bot) / 2.0, bx_mbr_s, na, "None", "MBR×" + str.tostring(_pre_mbr_s_count), "MultiRej")
                     array.push(zone_db, mbr_s)
 
 f_mng() =>
