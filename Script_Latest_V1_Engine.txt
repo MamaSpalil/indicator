@@ -5483,8 +5483,9 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // ⚠️ ЛИМИТ TradingView: indicator() допускает МАКСИМУМ 64 output-слота.
 //    В output-слоты считаются: plot(), plotshape(), plotchar(), plotarrow(),
 //    plotbar(), plotcandle(), bgcolor(), barcolor(), fill().
-//    Текущее использование: 63 / 64 (ENG: каналы + VWAP visible plot).
+//    Текущее использование: 56 / 64 (ENG: каналы + VWAP visible plot).
 //    V282: 8 zone boundary channels added (Sup1/2 top/bot, Res1/2 top/bot).
+//    V283: Removed 7 dashboard-only channels (Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95).
 // ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
 // При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
@@ -5494,7 +5495,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(282.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(283.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -5529,15 +5530,9 @@ plot(nz(float(min_confluence), 2.0),    "ENG: Confluence",   color=color.new(#00
 plot(nz(p_z_min, 0.85),                 "ENG: Z Min",        color=color.new(#000000, 100))
 plot(nz(p_z_max, 5.0),                  "ENG: Z Max",        color=color.new(#000000, 100))
 plot(nz(p_vol_max, 2.5),                "ENG: Vol Max",      color=color.new(#000000, 100))
-// V269: Stochastic exports
-plot(nz(d_mu, 0.0),                     "ENG: Stoch Mu",     color=color.new(#000000, 100))
-plot(nz(d_sig, 0.0),                    "ENG: Stoch Sigma",  color=color.new(#000000, 100))
-plot(nz(d_eta, 0.0),                    "ENG: Stoch Eta",    color=color.new(#000000, 100))
-// V269: Risk metrics
-plot(nz(_kelly_f, 0.0),                 "ENG: Kelly F",      color=color.new(#000000, 100))
-plot(nz(_sharpe, 0.0),                  "ENG: Sharpe",       color=color.new(#000000, 100))
-plot(nz(_sortino, 0.0),                 "ENG: Sortino",      color=color.new(#000000, 100))
-plot(nz(_mc_dd95, 0.0),                 "ENG: MC DD95",      color=color.new(#000000, 100))
+// V283: Removed 7 dashboard-only channels (Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95)
+// to free plot slots. These metrics were displayed in VISUAL dashboard only,
+// with no impact on zone search logic or chart rendering.
 plot(nz(_equity_curve, SIM_INITIAL_CAPITAL), "ENG: Equity Curve", color=color.new(#000000, 100))
 // V270: New export channels for enhanced VISUAL dashboard
 // V273-fix: uncommented Top1 zone channels for VISUAL dashboard
