@@ -648,13 +648,14 @@ if barstate.islast and show_dash
         f_dr(26, "SMC Cluster", cl_txt, color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
         f_dr(27, "Inv Dist (ATR)", str.tostring(v_inv_dist_sup, "#") + " / " + str.tostring(v_inv_dist_res, "#"), color.gray, tuning_mode == "Auto-Adaptive" ? color.aqua : color.white, t_sz)
 
-        // V285: Restored dashboard rows (channels restored in ENGINE)
+        // V286: Risk metrics computed locally in VISUAL
         f_dr(28, "Kelly F", str.tostring(v_kelly_f, "#.###"), color.gray, v_kelly_f > 0.2 ? color.lime : (v_kelly_f > 0 ? color.white : color.red), t_sz)
         string sharpe_txt = str.tostring(v_sharpe, "#.##") + " | Sort: " + str.tostring(v_sortino, "#.##")
         color sharpe_col = v_sharpe > 1.0 ? color.lime : (v_sharpe > 0 ? color.white : color.red)
         f_dr(29, "Sharpe/Sortino", sharpe_txt, color.gray, sharpe_col, t_sz)
         f_dr(30, "MC DD95%", str.tostring(v_mc_dd95, "#.#") + "%", color.gray, v_mc_dd95 > 30 ? color.red : (v_mc_dd95 > 15 ? color.orange : color.lime), t_sz)
-        string stoch_detail = "μ=" + str.tostring(v_stoch_mu, "#.#") + " σ=" + str.tostring(v_stoch_sigma, "#.#") + " η=" + str.tostring(v_stoch_eta, "#.#")
+        // V286: Stoch μ/σ/η require ENGINE zone database — show "N/A" when not available
+        string stoch_detail = v_stoch_mu != 0 or v_stoch_sigma != 0 ? "μ=" + str.tostring(v_stoch_mu, "#.#") + " σ=" + str.tostring(v_stoch_sigma, "#.#") + " η=" + str.tostring(v_stoch_eta, "#.#") : "N/A (local)"
         f_dr(31, "Stoch μ/σ/η", v_d_n >= stoch_min_val ? stoch_detail : "Wait", color.aqua, color.white, t_sz)
 
         // Regime detection
@@ -946,7 +947,7 @@ alertcondition(v_bos_signal < 0, title="📊 BOS Bearish", message="📊 Break o
 alertcondition(v_choch_signal > 0, title="🔄 CHoCH Bullish", message="🔄 Change of Character: Bullish")
 alertcondition(v_choch_signal < 0, title="🔄 CHoCH Bearish", message="🔄 Change of Character: Bearish")
 alertcondition(v_squeeze > 0.5, title="🔸 Keltner Squeeze", message="🔸 Keltner Squeeze активен — сжатие волатильности, ожидается импульс")
-// V285: MC DD95 alert condition restored
+// V286: MC DD95 computed locally in VISUAL
 alertcondition(v_mc_dd95 > 30, title="⚠️ Monte Carlo DD >30%", message="⚠️ Monte Carlo 95th percentile drawdown превысил 30%")
 
 // Standalone warning label on chart with auto-detect hint
