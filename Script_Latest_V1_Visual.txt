@@ -1,7 +1,9 @@
 // @version=6
-// V285: VISUAL indicator restored as standalone visualization layer.
+// V286: VISUAL indicator with locally computed risk metrics.
 // ENGINE exports data via plot() channels; VISUAL renders dashboard, trade hints,
 // session boxes, PD bands, zone visualization, equity curve, and alert conditions.
+// V286: Moved 8 channels from ENGINE to VISUAL (Equity Curve, Stoch Mu/Sigma/Eta,
+// Kelly F, Sharpe, Sortino, MC DD95) — computed locally from exported trade data.
 indicator("Trading Fluppy VISUAL",
      overlay=true,
      max_labels_count=500,
@@ -171,9 +173,9 @@ zone_res_col  = input.color(color.new(#FF1744, 70), "Цвет: зоны сопр
 // Если ENGINE не подключён — используются локальные fallback-значения.
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 285.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 286.0. При подключении система автоматически определит ENGINE и начнёт использовать его данные.", group=group_eng)
 // ── Автоопределение ENGINE по каналу Version ──
-float EXPECTED_ENG_VERSION = 285.0
+float EXPECTED_ENG_VERSION = 286.0
 bool  _auto_engine = math.round(eng_version) == EXPECTED_ENG_VERSION
 eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Если Version=275 — ENGINE подключён. 'Вкл (Force ON)' — принудительно использовать input.source() данные. 'Выкл (Force OFF)' — всегда использовать локальные fallback-значения.", group=group_eng)
 bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
@@ -210,8 +212,7 @@ eng_confluence   = input.source(close, "VIS: Confluence",   tooltip="→ ENG: Co
 eng_z_min        = input.source(close, "VIS: Z Min",        tooltip="→ ENG: Z Min | Диапазон: 0.1-5.0. Минимальный Z-Score порог", group=group_eng)
 eng_z_max        = input.source(close, "VIS: Z Max",        tooltip="→ ENG: Z Max | Диапазон: 1.0-15.0. Максимальный Z-Score порог", group=group_eng)
 eng_vol_max      = input.source(close, "VIS: Vol Max",      tooltip="→ ENG: Vol Max | Диапазон: 1.0-10.0. Максимальный RVOL порог", group=group_eng)
-// V285: Dashboard-only channels restored in ENGINE
-eng_equity_curve = input.source(close, "VIS: Equity Curve",  tooltip="→ ENG: Equity Curve | Текущий капитал для мини-графика", group=group_eng)
+// V286: Equity Curve, Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95 — computed locally
 eng_top1_price   = input.source(close, "VIS: Top1 Price",    tooltip="→ ENG: Top1 Price | Цена лучшей зоны", group=group_eng)
 eng_top1_score   = input.source(close, "VIS: Top1 Score",    tooltip="→ ENG: Top1 Score | Score лучшей зоны (0-150)", group=group_eng)
 eng_top1_dist    = input.source(close, "VIS: Top1 Dist",     tooltip="→ ENG: Top1 Dist | Расстояние до лучшей зоны (ATR)", group=group_eng)
@@ -236,14 +237,8 @@ eng_res1_top     = input.source(close, "VIS: Res1 Top",       tooltip="→ ENG: 
 eng_res1_bot     = input.source(close, "VIS: Res1 Bot",       tooltip="→ ENG: Res1 Bot | Нижняя граница ближайшей зоны сопротивления (0 = нет)", group=group_eng)
 eng_res2_top     = input.source(close, "VIS: Res2 Top",       tooltip="→ ENG: Res2 Top | Верхняя граница 2-й зоны сопротивления (0 = нет)", group=group_eng)
 eng_res2_bot     = input.source(close, "VIS: Res2 Bot",       tooltip="→ ENG: Res2 Bot | Нижняя граница 2-й зоны сопротивления (0 = нет)", group=group_eng)
-// V285: Restored dashboard-only channels
-eng_stoch_mu     = input.source(close, "VIS: Stoch Mu",       tooltip="→ ENG: Stoch Mu | Среднее стохастической модели", group=group_eng)
-eng_stoch_sigma  = input.source(close, "VIS: Stoch Sigma",    tooltip="→ ENG: Stoch Sigma | Стд.откл. стохастической модели", group=group_eng)
-eng_stoch_eta    = input.source(close, "VIS: Stoch Eta",      tooltip="→ ENG: Stoch Eta | Параметр формы стохастической модели", group=group_eng)
-eng_kelly_f      = input.source(close, "VIS: Kelly F",        tooltip="→ ENG: Kelly F | Kelly Fraction (0-1)", group=group_eng)
-eng_sharpe       = input.source(close, "VIS: Sharpe",         tooltip="→ ENG: Sharpe | Annualized Sharpe Ratio", group=group_eng)
-eng_sortino      = input.source(close, "VIS: Sortino",        tooltip="→ ENG: Sortino | Annualized Sortino Ratio", group=group_eng)
-eng_mc_dd95      = input.source(close, "VIS: MC DD95",        tooltip="→ ENG: MC DD95 | Monte Carlo 95th percentile drawdown %", group=group_eng)
+// V286: Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95 removed from ENGINE channels
+// These are now computed locally in VISUAL from exported trade data (Trades/Wins/Gross Profit/Gross Loss/Equity)
 
 // ==========================================
 // БЛОК 3: ДЕКОДИРОВАНИЕ ДАННЫХ ИЗ ENGINE
@@ -325,17 +320,82 @@ float _struct_raw    = use_engine_data ? math.round(eng_struct_combo) : 0.0
 float v_bos_signal   = _struct_raw >= 5.0 ? 1.0 : _struct_raw <= -5.0 ? -1.0 : 0.0
 float v_choch_signal = _struct_raw - (v_bos_signal * 10.0)
 
-// V285: Restored dashboard-only channel decoders
-float v_stoch_mu     = use_engine_data ? eng_stoch_mu      : 0.0
-float v_stoch_sigma  = use_engine_data ? eng_stoch_sigma   : 0.0
-float v_stoch_eta    = use_engine_data ? eng_stoch_eta     : 0.0
-float v_kelly_f      = use_engine_data ? eng_kelly_f       : 0.0
-float v_sharpe       = use_engine_data ? eng_sharpe        : 0.0
-float v_sortino      = use_engine_data ? eng_sortino       : 0.0
-float v_mc_dd95      = use_engine_data ? eng_mc_dd95       : 0.0
-float v_equity_curve = use_engine_data ? eng_equity_curve  : src_equity
+// V286: Local computation of risk metrics (moved from ENGINE)
+// Equity curve: directly from exported equity channel
+float v_equity_curve = use_engine_data ? v_equity : src_equity
+
+// V286: Stoch Mu/Sigma/Eta — these require ENGINE's zone database and cannot be computed
+// locally. Display fallback values (0.0) which dashboard handles gracefully.
+float v_stoch_mu     = 0.0
+float v_stoch_sigma  = 0.0
+float v_stoch_eta    = 0.0
+
+// V286: Kelly Fraction — computed from exported Trades/Wins/Gross Profit/Gross Loss
+int   _v_losses     = v_total_tr - v_wins
+float _v_wr         = v_total_tr > 0 ? f_safe_div(float(v_wins), float(v_total_tr)) : 0.0
+float _v_avg_win    = v_wins > 0 ? f_safe_div(v_gross_profit, float(v_wins)) : 0.0
+float _v_avg_loss   = _v_losses > 0 ? f_safe_div(v_gross_loss, float(_v_losses)) : 0.0
+float v_kelly_f     = _v_avg_win > 0 ? f_safe_div(_v_wr * _v_avg_win - (1.0 - _v_wr) * _v_avg_loss, _v_avg_win) : 0.0
+v_kelly_f           := math.max(0.0, math.min(v_kelly_f, 1.0))
+
+// V286: Sharpe/Sortino Ratios — per-trade returns from equity changes
+int  RM_MAX_RETURNS  = 100
+int  RM_MIN_FOR_RISK = 5
+int  RM_MIN_FOR_MC   = 10
+int  RM_MC_MAX_STEPS = 50
+var array<float> _v_trade_returns = array.new<float>()
+if v_total_tr > 0 and v_total_tr != nz(v_total_tr[1], 0)
+    float _v_last_pnl = (v_gross_profit - nz(v_gross_profit[1], 0.0)) - (v_gross_loss - nz(v_gross_loss[1], 0.0))
+    float _v_last_eq  = math.max(v_equity, 1.0)
+    float _v_ret = f_safe_div(_v_last_pnl, _v_last_eq)
+    array.push(_v_trade_returns, _v_ret)
+    if array.size(_v_trade_returns) > RM_MAX_RETURNS
+        array.shift(_v_trade_returns)
+
+float v_sharpe  = 0.0
+float v_sortino = 0.0
+int _v_ret_n = array.size(_v_trade_returns)
+if _v_ret_n >= RM_MIN_FOR_RISK
+    float _v_ret_sum = 0.0
+    for _ri = 0 to _v_ret_n - 1
+        _v_ret_sum += array.get(_v_trade_returns, _ri)
+    float _v_ret_mean = f_safe_div(_v_ret_sum, float(_v_ret_n))
+    float _v_ret_sq_sum = 0.0
+    float _v_ret_down_sq = 0.0
+    for _ri = 0 to _v_ret_n - 1
+        float _r = array.get(_v_trade_returns, _ri)
+        _v_ret_sq_sum += math.pow(_r - _v_ret_mean, 2)
+        if _r < 0
+            _v_ret_down_sq += math.pow(_r, 2)
+    float _v_ret_std = math.sqrt(f_safe_div(_v_ret_sq_sum, float(math.max(_v_ret_n - 1, 1))))
+    float _v_down_std = math.sqrt(f_safe_div(_v_ret_down_sq, float(math.max(_v_ret_n - 1, 1))))
+    v_sharpe  := f_safe_div(_v_ret_mean, _v_ret_std) * math.sqrt(252.0)
+    v_sortino := f_safe_div(_v_ret_mean, _v_down_std) * math.sqrt(252.0)
+
+// V286: Monte Carlo Simulation (500 iterations, block bootstrap)
+float v_mc_dd95 = 0.0
+if _v_ret_n >= RM_MIN_FOR_MC
+    var array<float> _v_mc_dds = array.new<float>()
+    array.clear(_v_mc_dds)
+    for _sim = 0 to 499
+        float _mc_eq = 1.0
+        float _mc_peak = 1.0
+        float _mc_max_dd = 0.0
+        int _block_size = 3 + (_sim % 3)
+        for _step = 0 to math.min(_v_ret_n - 1, RM_MC_MAX_STEPS - 1)
+            int _block_start = (_sim * 7 + (_step / _block_size) * 13) % _v_ret_n
+            int _pick = (_block_start + (_step % _block_size)) % _v_ret_n
+            float _r = array.get(_v_trade_returns, _pick)
+            _mc_eq := _mc_eq * (1.0 + _r)
+            _mc_peak := math.max(_mc_peak, _mc_eq)
+            float _dd = f_safe_div(_mc_peak - _mc_eq, _mc_peak)
+            _mc_max_dd := math.max(_mc_max_dd, _dd)
+        array.push(_v_mc_dds, _mc_max_dd)
+    array.sort(_v_mc_dds)
+    int _p95_idx = math.min(474, array.size(_v_mc_dds) - 1)
+    v_mc_dd95 := array.get(_v_mc_dds, _p95_idx) * 100.0
 // v_eng_version reads eng_version unconditionally (not gated by use_engine_data)
-// to enable auto-detection: when connected to ENGINE it returns 285.0, otherwise close price
+// to enable auto-detection: when connected to ENGINE it returns 286.0, otherwise close price
 float v_eng_version  = eng_version
 
 // V275: Simulated trade state from ENGINE

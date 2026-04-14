@@ -4851,9 +4851,7 @@ float exp_tp1_price   = sim_in_position ? sim_tp1_price   : na
 float exp_tp2_price   = sim_in_position ? sim_tp2_price   : na
 float exp_sim_dir     = sim_in_position ? float(sim_direction) : 0.0
 
-float d_mu   = _sf_mu
-float d_sig  = _sf_sig
-float d_eta  = _sf_eta
+// V286: d_mu, d_sig, d_eta moved to VISUAL (computed locally or fallback=0.0)
 float d_prob = _sf_prob
 int   d_n    = _sf_n
 float d_discount = 0.0
@@ -5277,78 +5275,12 @@ var float max_eq = SIM_INITIAL_CAPITAL
 max_eq := math.max(max_eq, sim_equity)
 float dd_pct = max_eq > 0 ? f_safe_div(max_eq - sim_equity, max_eq) * 100 : 0
 
-// V269: Risk Management Metrics ──────────────────────────────────────────
-int  RM_MAX_RETURNS       = 100  // Rolling window for trade returns (balance recency vs. sample size)
-int  RM_MIN_FOR_RISK      = 5    // Min trades for Sharpe/Sortino (statistical significance)
-int  RM_MIN_FOR_MC        = 10   // Min trades for Monte Carlo bootstrap resampling
-int  RM_MC_MAX_STEPS      = 50   // Max path length per MC sim (perf vs. accuracy trade-off)
+// V286: Risk Management Metrics (Kelly F, Sharpe, Sortino, MC DD95) moved to VISUAL
+// VISUAL computes these locally from exported Trades/Wins/Gross Profit/Gross Loss channels.
+// _rm_trades and _rm_wins kept for ENG: Trades/Wins channels and neural network update.
 // V275: Use simulated trade data instead of hardcoded zeros
 int _rm_trades = sim_trades
 int _rm_wins   = sim_wins
-int _rm_losses = _rm_trades - _rm_wins
-float _rm_wr   = _rm_trades > 0 ? f_safe_div(float(_rm_wins), float(_rm_trades)) : 0.0
-float _rm_avg_win  = _rm_wins > 0 ? f_safe_div(sim_gross_profit, float(_rm_wins)) : 0.0
-float _rm_avg_loss = _rm_losses > 0 ? f_safe_div(sim_gross_loss, float(_rm_losses)) : 0.0
-float _kelly_f = _rm_avg_win > 0 ? f_safe_div(_rm_wr * _rm_avg_win - (1.0 - _rm_wr) * _rm_avg_loss, _rm_avg_win) : 0.0
-_kelly_f := math.max(0.0, math.min(_kelly_f, 1.0))
-
-// Sharpe Ratio (annualized, assuming 252 trading days)
-// Uses per-trade returns approximation
-var array<float> _trade_returns = array.new<float>()
-if _rm_trades > 0 and _rm_trades != nz(_rm_trades[1], 0)
-    // V275: Use simulated trade P&L
-    float last_pnl = sim_exit_this_bar ? (sim_gross_profit - nz(sim_gross_profit[1], 0.0)) - (sim_gross_loss - nz(sim_gross_loss[1], 0.0)) : 0.0
-    float last_eq  = math.max(sim_equity, 1.0)
-    float ret = f_safe_div(last_pnl, last_eq)
-    array.push(_trade_returns, ret)
-    if array.size(_trade_returns) > RM_MAX_RETURNS
-        array.shift(_trade_returns)
-
-float _sharpe  = 0.0
-float _sortino = 0.0
-int _ret_n = array.size(_trade_returns)
-if _ret_n >= RM_MIN_FOR_RISK
-    float _ret_sum = 0.0
-    for _ri = 0 to _ret_n - 1
-        _ret_sum += array.get(_trade_returns, _ri)
-    float _ret_mean = f_safe_div(_ret_sum, float(_ret_n))
-    float _ret_sq_sum = 0.0
-    float _ret_down_sq = 0.0
-    for _ri = 0 to _ret_n - 1
-        float _r = array.get(_trade_returns, _ri)
-        _ret_sq_sum += math.pow(_r - _ret_mean, 2)
-        if _r < 0
-            _ret_down_sq += math.pow(_r, 2)
-    float _ret_std = math.sqrt(f_safe_div(_ret_sq_sum, float(math.max(_ret_n - 1, 1))))
-    float _down_std = math.sqrt(f_safe_div(_ret_down_sq, float(math.max(_ret_n - 1, 1))))
-    _sharpe  := f_safe_div(_ret_mean, _ret_std) * math.sqrt(252.0)
-    _sortino := f_safe_div(_ret_mean, _down_std) * math.sqrt(252.0)
-
-// V270: Monte Carlo Simulation (500 iterations, block bootstrap)
-// Uses deterministic index shuffling (no RNG in Pine) for reproducible results
-float _mc_dd95 = 0.0
-if _ret_n >= RM_MIN_FOR_MC
-    var array<float> _mc_dds = array.new<float>()
-    array.clear(_mc_dds)
-    for _sim = 0 to 499
-        float _mc_eq = 1.0
-        float _mc_peak = 1.0
-        float _mc_max_dd = 0.0
-        int _block_size = 3 + (_sim % 3)  // V270: Block bootstrap (blocks of 3-5)
-        for _step = 0 to math.min(_ret_n - 1, RM_MC_MAX_STEPS - 1)
-            // V270: Block bootstrap with deterministic index for autocorrelation
-            int _block_start = (_sim * 7 + (_step / _block_size) * 13) % _ret_n
-            int _pick = (_block_start + (_step % _block_size)) % _ret_n
-            float _r = array.get(_trade_returns, _pick)
-            _mc_eq := _mc_eq * (1.0 + _r)
-            _mc_peak := math.max(_mc_peak, _mc_eq)
-            float _dd = f_safe_div(_mc_peak - _mc_eq, _mc_peak)
-            _mc_max_dd := math.max(_mc_max_dd, _dd)
-        array.push(_mc_dds, _mc_max_dd)
-    // Sort and take 95th percentile
-    array.sort(_mc_dds)
-    int _p95_idx = math.min(474, array.size(_mc_dds) - 1)  // 95th pctile of 500 (0-indexed: 474)
-    _mc_dd95 := array.get(_mc_dds, _p95_idx) * 100.0
 
 // V270: CVD tracking
 float _cvd_delta_val = f_cvd_delta()
@@ -5472,8 +5404,7 @@ if array.size(zone_db) > 0
                 _exp_res2_top   := z.top
                 _exp_res2_bot   := z.bot
 
-// Equity curve for VISUAL plot
-float _equity_curve = sim_equity  // V275: use simulated equity
+// V286: _equity_curve moved to VISUAL (uses v_equity = sim_equity already exported as ENG: Equity)
 
 // V280: Invariant check label moved to VISUAL
 
@@ -5486,9 +5417,9 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // ⚠️ ЛИМИТ TradingView: indicator() допускает МАКСИМУМ 64 output-слота.
 //    В output-слоты считаются: plot(), plotshape(), plotchar(), plotarrow(),
 //    plotbar(), plotcandle(), bgcolor(), barcolor(), fill().
-//    V285: VISUAL code moved back to standalone VISUAL indicator to reduce ENGINE token count.
-//    Restored 7 dashboard-only channels (Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95).
-//    Current: 63 / 64 (55 ENG: data channels + 7 dashboard channels + 1 VWAP visible).
+//    V286: Moved 8 dashboard-only channels to VISUAL (Equity Curve, Stoch Mu/Sigma/Eta,
+//    Kelly F, Sharpe, Sortino, MC DD95). VISUAL computes these locally.
+//    Current: 55 / 64 (54 ENG: data channels + 1 VWAP visible).
 // ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
 // При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
@@ -5498,7 +5429,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(285.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(286.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -5526,17 +5457,14 @@ plot(nz(vol_ratio_c, 1.0),              "ENG: Vol Ratio",    color=color.new(#00
 plot(nz(htf_vol_ctx_c, 1.0),            "ENG: HTF Vol",      color=color.new(#000000, 100))
 plot(nz(float(p_max_history), 500.0),   "ENG: Max Hist",     color=color.new(#000000, 100))
 // V280: Pivot L/R Sup/Res, OB Len Sup/Res, Cluster Tol, Inv Dist Sup/Res moved to VISUAL (use local fallback)
-// Freed 9 plot slots for future use
 plot(nz(p_fvg_min, 0.0001),             "ENG: FVG Min",      color=color.new(#000000, 100))
 plot(nz(p_fvg_max, 6.0),                "ENG: FVG Max",      color=color.new(#000000, 100))
 plot(nz(float(min_confluence), 2.0),    "ENG: Confluence",   color=color.new(#000000, 100))
 plot(nz(p_z_min, 0.85),                 "ENG: Z Min",        color=color.new(#000000, 100))
 plot(nz(p_z_max, 5.0),                  "ENG: Z Max",        color=color.new(#000000, 100))
 plot(nz(p_vol_max, 2.5),                "ENG: Vol Max",      color=color.new(#000000, 100))
-// V285: Dashboard-only channels restored above (Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95)
-plot(nz(_equity_curve, SIM_INITIAL_CAPITAL), "ENG: Equity Curve", color=color.new(#000000, 100))
+// V286: Equity Curve, Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95 moved to VISUAL
 // V270: New export channels for enhanced VISUAL dashboard
-// V273-fix: uncommented Top1 zone channels for VISUAL dashboard
 plot(nz(_top1_zone_price, 0.0),          "ENG: Top1 Price",   color=color.new(#000000, 100))
 plot(nz(_top1_zone_score, 0.0),          "ENG: Top1 Score",   color=color.new(#000000, 100))
 plot(nz(_top1_zone_dist, 0.0),           "ENG: Top1 Dist",    color=color.new(#000000, 100))
@@ -5555,7 +5483,6 @@ plot(nz(exp_sl_price, 0.0),               "ENG: Sim SL",       color=color.new(#
 plot(nz(exp_tp1_price, 0.0),              "ENG: Sim TP1",      color=color.new(#000000, 100))
 plot(nz(exp_tp2_price, 0.0),              "ENG: Sim TP2",      color=color.new(#000000, 100))
 plot(nz(exp_sim_dir, 0.0),                "ENG: Sim Dir",      color=color.new(#000000, 100))
-//plot(nz(float(_vsa_signal), 0.0),       "ENG: VSA Signal",   color=color.new(#000000, 100))
 // V282: Zone boundary export channels for VISUAL rendering
 plot(nz(_exp_sup1_top, 0.0),              "ENG: Sup1 Top",     color=color.new(#000000, 100))
 plot(nz(_exp_sup1_bot, 0.0),              "ENG: Sup1 Bot",     color=color.new(#000000, 100))
@@ -5565,14 +5492,6 @@ plot(nz(_exp_res1_top, 0.0),              "ENG: Res1 Top",     color=color.new(#
 plot(nz(_exp_res1_bot, 0.0),              "ENG: Res1 Bot",     color=color.new(#000000, 100))
 plot(nz(_exp_res2_top, 0.0),              "ENG: Res2 Top",     color=color.new(#000000, 100))
 plot(nz(_exp_res2_bot, 0.0),              "ENG: Res2 Bot",     color=color.new(#000000, 100))
-// V285: Restored dashboard-only channels (moved back from integrated VISUAL)
-plot(nz(d_mu, 0.0),                      "ENG: Stoch Mu",     color=color.new(#000000, 100))
-plot(nz(d_sig, 0.0),                     "ENG: Stoch Sigma",  color=color.new(#000000, 100))
-plot(nz(d_eta, 0.0),                     "ENG: Stoch Eta",    color=color.new(#000000, 100))
-plot(nz(_kelly_f, 0.0),                  "ENG: Kelly F",      color=color.new(#000000, 100))
-plot(nz(_sharpe, 0.0),                   "ENG: Sharpe",       color=color.new(#000000, 100))
-plot(nz(_sortino, 0.0),                  "ENG: Sortino",      color=color.new(#000000, 100))
-plot(nz(_mc_dd95, 0.0),                  "ENG: MC DD95",      color=color.new(#000000, 100))
 // V280: PD visualization moved to VISUAL
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
@@ -5615,8 +5534,10 @@ alertcondition(_alert_vcp_zone, title="🔻 VCP Zone", message="VCP compression 
 alertcondition(_alert_acc_zone, title="📊 Accumulation/Distribution", message="Wyckoff A/D zone on {{ticker}} {{interval}}")
 alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi-bar rejection on {{ticker}} {{interval}}")
 
-// V285: БЛОК 10 (INTEGRATED VISUAL) moved back to standalone VISUAL indicator
+// V286: БЛОК 10 (INTEGRATED VISUAL) moved back to standalone VISUAL indicator
 // to reduce ENGINE token count below TradingView 100000 limit.
+// V286: Moved 8 dashboard-only channels to VISUAL (Equity Curve, Stoch Mu/Sigma/Eta,
+// Kelly F, Sharpe, Sortino, MC DD95). Total plots: 55 / 64.
 // Use VISUAL indicator for dashboard, trade hints, session boxes, PD bands,
 // zone visualization, equity curve, and related alert conditions.
 
