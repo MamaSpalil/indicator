@@ -324,11 +324,8 @@ float v_choch_signal = _struct_raw - (v_bos_signal * 10.0)
 // Equity curve: directly from exported equity channel
 float v_equity_curve = use_engine_data ? v_equity : src_equity
 
-// V286: Stoch Mu/Sigma/Eta — these require ENGINE's zone database and cannot be computed
-// locally. Display fallback values (0.0) which dashboard handles gracefully.
-float v_stoch_mu     = 0.0
-float v_stoch_sigma  = 0.0
-float v_stoch_eta    = 0.0
+// V286: Stoch Mu/Sigma/Eta require ENGINE's zone database and cannot be computed
+// locally. Dashboard row 31 shows "N/A (zone DB)" instead.
 
 // V286: Kelly Fraction — computed from exported Trades/Wins/Gross Profit/Gross Loss
 int   _v_losses     = v_total_tr - v_wins
@@ -654,9 +651,8 @@ if barstate.islast and show_dash
         color sharpe_col = v_sharpe > 1.0 ? color.lime : (v_sharpe > 0 ? color.white : color.red)
         f_dr(29, "Sharpe/Sortino", sharpe_txt, color.gray, sharpe_col, t_sz)
         f_dr(30, "MC DD95%", str.tostring(v_mc_dd95, "#.#") + "%", color.gray, v_mc_dd95 > 30 ? color.red : (v_mc_dd95 > 15 ? color.orange : color.lime), t_sz)
-        // V286: Stoch μ/σ/η require ENGINE zone database — show "N/A" when not available
-        string stoch_detail = v_stoch_mu != 0 or v_stoch_sigma != 0 ? "μ=" + str.tostring(v_stoch_mu, "#.#") + " σ=" + str.tostring(v_stoch_sigma, "#.#") + " η=" + str.tostring(v_stoch_eta, "#.#") : "N/A (local)"
-        f_dr(31, "Stoch μ/σ/η", v_d_n >= stoch_min_val ? stoch_detail : "Wait", color.aqua, color.white, t_sz)
+        // V286: Stoch μ/σ/η require ENGINE zone database — always show "N/A" (computed locally = 0.0)
+        f_dr(31, "Stoch μ/σ/η", v_d_n >= stoch_min_val ? "N/A (zone DB)" : "Wait", color.aqua, color.white, t_sz)
 
         // Regime detection
         string regime_names = v_regime == 0.0 ? "Trending ↑ 🟢" : v_regime == 1.0 ? "Trending ↓ 🔴" : v_regime == 2.0 ? "Ranging ⚪" : "Volatile ⚡"
