@@ -26,6 +26,21 @@
 //   • Trend Strength meter — sparkline ▁▂▃▄▅▆▇█ из 5 компонент (HTF/ITF/
 //     согласованность/VWAP-distance/Z-Score/Regime).
 //   • Power of 3 (AMD) — фаза дневного цикла ICT в дашборде.
+// V287.4 (perf-fix — устранение тайм-аута подключения VISUAL↔ENGINE):
+//   • Sharpe / Sortino / Monte Carlo DD95 раньше пересчитывались на КАЖДОМ
+//     историческом баре. При подключённом ENGINE и накопленных трейдах
+//     (≥10) это давало ~125M операций (500 MC × до 50 шагов × ~5000 баров)
+//     и приводило к ошибке TradingView «indicator timed out» (>20 секунд)
+//     при добавлении VISUAL поверх ENGINE.
+//   • Теперь эти три метрики — `var float`, и тяжёлый расчёт обёрнут в
+//     `if barstate.islast` (один раз на последний бар + каждый realtime
+//     тик). Дашборд отображает их как раньше (он сам рендерится только на
+//     barstate.islast), alertcondition для MC DD>30 продолжает работать
+//     (срабатывает на realtime-баре, где значение свежее).
+//   • Аккумулятор `_v_trade_returns` по-прежнему пополняется на каждом
+//     баре — это копеечная операция, не требующая оптимизации.
+//   • Подключение VISUAL к ENGINE и первичная отрисовка ускоряются на
+//     несколько порядков; ошибка тайм-аута устранена.
 // V287.3 (UX pass — упрощение подключения ENGINE↔VISUAL):
 //   • Инструкция в header-блоке переписана: drag&drop VISUAL поверх ENGINE
 //     теперь явно отмечен как РЕКОМЕНДУЕМЫЙ способ (один шаг — все каналы
@@ -601,48 +616,62 @@ if v_total_tr > 0 and v_total_tr != nz(v_total_tr[1], 0)
     if array.size(_v_trade_returns) > RM_MAX_RETURNS
         array.shift(_v_trade_returns)
 
-float v_sharpe  = 0.0
-float v_sortino = 0.0
+// V287.4 (perf-fix): Sharpe/Sortino/MC использовались ТОЛЬКО в дашборде
+// (рендерится на barstate.islast) и в alertcondition (стреляет только на
+// realtime-баре). Раньше пересчитывались на каждом историческом баре, что
+// при подключённом ENGINE и накопленных трейдах давало ~125M операций
+// (500 MC × до 50 шагов × ~5000 баров истории) и приводило к ошибке
+// TradingView «indicator timed out» (>20с) при подключении VISUAL к ENGINE.
+// Теперь это `var float` и обновляются только на последнем баре —
+// подключение и первичная отрисовка ускоряются на несколько порядков.
+var float v_sharpe  = 0.0
+var float v_sortino = 0.0
+var float v_mc_dd95 = 0.0
 int _v_ret_n = array.size(_v_trade_returns)
-if _v_ret_n >= RM_MIN_FOR_RISK
-    float _v_ret_sum = 0.0
-    for _ri = 0 to _v_ret_n - 1
-        _v_ret_sum += array.get(_v_trade_returns, _ri)
-    float _v_ret_mean = f_safe_div(_v_ret_sum, float(_v_ret_n))
-    float _v_ret_sq_sum = 0.0
-    float _v_ret_down_sq = 0.0
-    for _ri = 0 to _v_ret_n - 1
-        float _r = array.get(_v_trade_returns, _ri)
-        _v_ret_sq_sum += math.pow(_r - _v_ret_mean, 2)
-        if _r < 0
-            _v_ret_down_sq += math.pow(_r, 2)
-    float _v_ret_std = math.sqrt(f_safe_div(_v_ret_sq_sum, float(math.max(_v_ret_n - 1, 1))))
-    float _v_down_std = math.sqrt(f_safe_div(_v_ret_down_sq, float(math.max(_v_ret_n - 1, 1))))
-    v_sharpe  := f_safe_div(_v_ret_mean, _v_ret_std) * math.sqrt(252.0)
-    v_sortino := f_safe_div(_v_ret_mean, _v_down_std) * math.sqrt(252.0)
+if barstate.islast
+    if _v_ret_n >= RM_MIN_FOR_RISK
+        float _v_ret_sum = 0.0
+        for _ri = 0 to _v_ret_n - 1
+            _v_ret_sum += array.get(_v_trade_returns, _ri)
+        float _v_ret_mean = f_safe_div(_v_ret_sum, float(_v_ret_n))
+        float _v_ret_sq_sum = 0.0
+        float _v_ret_down_sq = 0.0
+        for _ri = 0 to _v_ret_n - 1
+            float _r = array.get(_v_trade_returns, _ri)
+            _v_ret_sq_sum += math.pow(_r - _v_ret_mean, 2)
+            if _r < 0
+                _v_ret_down_sq += math.pow(_r, 2)
+        float _v_ret_std = math.sqrt(f_safe_div(_v_ret_sq_sum, float(math.max(_v_ret_n - 1, 1))))
+        float _v_down_std = math.sqrt(f_safe_div(_v_ret_down_sq, float(math.max(_v_ret_n - 1, 1))))
+        v_sharpe  := f_safe_div(_v_ret_mean, _v_ret_std) * math.sqrt(252.0)
+        v_sortino := f_safe_div(_v_ret_mean, _v_down_std) * math.sqrt(252.0)
+    else
+        v_sharpe  := 0.0
+        v_sortino := 0.0
 
-// V286: Monte Carlo Simulation (500 iterations, block bootstrap)
-float v_mc_dd95 = 0.0
-if _v_ret_n >= RM_MIN_FOR_MC
-    var array<float> _v_mc_dds = array.new<float>()
-    array.clear(_v_mc_dds)
-    for _sim = 0 to 499
-        float _mc_eq = 1.0
-        float _mc_peak = 1.0
-        float _mc_max_dd = 0.0
-        int _block_size = 3 + (_sim % 3)
-        for _step = 0 to math.min(_v_ret_n - 1, RM_MC_MAX_STEPS - 1)
-            int _block_start = (_sim * 7 + (_step / _block_size) * 13) % _v_ret_n
-            int _pick = (_block_start + (_step % _block_size)) % _v_ret_n
-            float _r = array.get(_v_trade_returns, _pick)
-            _mc_eq := _mc_eq * (1.0 + _r)
-            _mc_peak := math.max(_mc_peak, _mc_eq)
-            float _dd = f_safe_div(_mc_peak - _mc_eq, _mc_peak)
-            _mc_max_dd := math.max(_mc_max_dd, _dd)
-        array.push(_v_mc_dds, _mc_max_dd)
-    array.sort(_v_mc_dds)
-    int _p95_idx = math.min(474, array.size(_v_mc_dds) - 1)
-    v_mc_dd95 := array.get(_v_mc_dds, _p95_idx) * 100.0
+    // V286: Monte Carlo Simulation (500 iterations, block bootstrap)
+    if _v_ret_n >= RM_MIN_FOR_MC
+        var array<float> _v_mc_dds = array.new<float>()
+        array.clear(_v_mc_dds)
+        for _sim = 0 to 499
+            float _mc_eq = 1.0
+            float _mc_peak = 1.0
+            float _mc_max_dd = 0.0
+            int _block_size = 3 + (_sim % 3)
+            for _step = 0 to math.min(_v_ret_n - 1, RM_MC_MAX_STEPS - 1)
+                int _block_start = (_sim * 7 + (_step / _block_size) * 13) % _v_ret_n
+                int _pick = (_block_start + (_step % _block_size)) % _v_ret_n
+                float _r = array.get(_v_trade_returns, _pick)
+                _mc_eq := _mc_eq * (1.0 + _r)
+                _mc_peak := math.max(_mc_peak, _mc_eq)
+                float _dd = f_safe_div(_mc_peak - _mc_eq, _mc_peak)
+                _mc_max_dd := math.max(_mc_max_dd, _dd)
+            array.push(_v_mc_dds, _mc_max_dd)
+        array.sort(_v_mc_dds)
+        int _p95_idx = math.min(474, array.size(_v_mc_dds) - 1)
+        v_mc_dd95 := array.get(_v_mc_dds, _p95_idx) * 100.0
+    else
+        v_mc_dd95 := 0.0
 // v_eng_version reads eng_version unconditionally (not gated by use_engine_data)
 // to enable auto-detection: when connected to ENGINE it returns 286.0, otherwise close price
 float v_eng_version  = eng_version
