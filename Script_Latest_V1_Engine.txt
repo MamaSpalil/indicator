@@ -1083,7 +1083,6 @@ f_score_to_transp(float score) =>
 //   bit[16]     is_bull flag (1=support side, 0=resistance side)
 //
 // Total: 17 bits used → max value 131,071 < 2^24 (safe float precision)
-// Pine v6: explicit int() casts чтобы избежать неявных конверсий float→int
 f_encode_zone_meta(string ztype, string tier, float score, bool is_prop, bool is_bull) =>
     int z_code = ztype == "OB"   ? 0 :
                  ztype == "BB"   ? 1 :
@@ -1095,7 +1094,7 @@ f_encode_zone_meta(string ztype, string tier, float score, bool is_prop, bool is
                  ztype == "MBR"  ? 7 :
                  ztype == "PROP" ? 8 : 9
     int t_code = tier == "PIVOT" ? 0 : tier == "NORMAL" ? 1 : tier == "STRONG" ? 2 : 3
-    int s_code = int(math.min(127.0, math.max(0.0, math.round(score / 150.0 * 127.0))))
+    int s_code = math.min(127, math.max(0, math.round(score / 150.0 * 127.0)))
     int p_flag = is_prop ? 1 : 0
     int b_flag = is_bull ? 1 : 0
     float(z_code) + float(t_code) * 16.0 + float(s_code) * 256.0 + float(p_flag) * 32768.0 + float(b_flag) * 65536.0
@@ -5579,14 +5578,14 @@ plot(nz(_top1_zone_price, 0.0),          "ENG: Top1 Price",   color=color.new(#0
 plot(nz(_top1_zone_score, 0.0),          "ENG: Top1 Score",   color=color.new(#000000, 100))
 plot(nz(_top1_zone_dist, 0.0),           "ENG: Top1 Dist",    color=color.new(#000000, 100))
 plot(nz(float(_regime_type), 0.0),       "ENG: Regime",       color=color.new(#000000, 100))
-plot(nz(_hurst_val, 0.5),               "ENG: Hurst",        color=color.new(#000000, 100))
-plot(nz(cvd_div_signal, 0.0),           "ENG: CVD Div",      color=color.new(#000000, 100))
+//plot(nz(_hurst_val, 0.5),               "ENG: Hurst",        color=color.new(#000000, 100))
+//plot(nz(cvd_div_signal, 0.0),           "ENG: CVD Div",      color=color.new(#000000, 100))
 // V273: Additional export channels
-plot(nz(_poc_price, 0.0),               "ENG: POC Price",    color=color.new(#000000, 100))
+//plot(nz(_poc_price, 0.0),               "ENG: POC Price",    color=color.new(#000000, 100))
 // V273-fix: combined VCP+Squeeze+Absorption into bitmask (bit2=VCP, bit1=Squeeze, bit0=Absorption) to stay within 64 plot limit
-plot((_is_vcp ? 4.0 : 0.0) + (_is_squeeze ? 2.0 : 0.0) + (_is_absorption ? 1.0 : 0.0), "ENG: Micro Combo", color=color.new(#000000, 100))
+//plot((_is_vcp ? 4.0 : 0.0) + (_is_squeeze ? 2.0 : 0.0) + (_is_absorption ? 1.0 : 0.0), "ENG: Micro Combo", color=color.new(#000000, 100))
 // V273-fix: combined BOS+CHoCH into single channel (BOS*10 + CHoCH) to stay within 64 plot limit
-plot((bos_bull ? 10.0 : bos_bear ? -10.0 : 0.0) + (choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0), "ENG: Struct Combo", color=color.new(#000000, 100))
+//plot((bos_bull ? 10.0 : bos_bear ? -10.0 : 0.0) + (choch_bull ? 1.0 : choch_bear ? -1.0 : 0.0), "ENG: Struct Combo", color=color.new(#000000, 100))
 // V275: Simulated trade state export channels (entry/SL/TP1/direction)
 plot(nz(exp_entry_price, 0.0),            "ENG: Sim Entry",    color=color.new(#000000, 100))
 plot(nz(exp_sl_price, 0.0),               "ENG: Sim SL",       color=color.new(#000000, 100))
