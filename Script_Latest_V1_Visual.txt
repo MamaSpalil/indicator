@@ -4,6 +4,18 @@
 // session boxes, PD bands, zone visualization, equity curve, and alert conditions.
 // V286: Moved 8 channels from ENGINE to VISUAL (Equity Curve, Stoch Mu/Sigma/Eta,
 // Kelly F, Sharpe, Sortino, MC DD95) — computed locally from exported trade data.
+// V287.1 (improvement pass, see PROMPT_IMPROVEMENT.md):
+//   • Магические числа state-machine (cooldown / time-stop / touch-tol / min-confl)
+//     вынесены в input.* — настраиваемы пользователем без правки кода.
+//   • Тема графика (Auto / Dark / Light) — управляет диапазоном прозрачности зон,
+//     чтобы зоны были одинаково читаемы на тёмных и светлых темах.
+//   • Динамический glow-offset — гарантирует видимость glow-полос даже на узких
+//     зонах (math.max с syminfo.mintick * 4).
+//   • Tag-метки типа зоны (тип + score) рисуются у правой границы каждой из 4
+//     рендерящихся зон — пользователь сразу видит «что» и «насколько сильно».
+//   • Компактный режим entry-меток — однострочный лейбл для младших ТФ.
+//   • PD-полоса опционально подписывается «PREMIUM» / «DISCOUNT».
+// Протокол ENGINE↔VISUAL не менялся — EXPECTED_ENG_VERSION остаётся 287.0.
 indicator("Trading Fluppy VISUAL",
      overlay=true,
      max_labels_count=500,
@@ -129,9 +141,19 @@ f_zone_border_width(string ztype) =>
     ztype == "OB" or ztype == "BB" or ztype == "PROP" or ztype == "MITIG" ? 2 : 1
 
 // V287: Транспарентность из decoded score (плавный градиент 95→40)
-f_score_to_transp_v(float score) =>
-    int t = int(math.round(95.0 - math.min(math.max(score, 0.0), 150.0) * 55.0 / 150.0))
-    math.max(40, math.min(95, t))
+// V287.1: Тема графика управляет диапазоном (Light = 95→40, Dark = 80→20).
+//         theme: "Light" / "Dark" / "Auto". В режиме "Auto" работает как Light
+//         (исторически безопасный диапазон, не ломает существующие настройки).
+f_score_to_transp_v(float score, string theme) =>
+    float s_clamped = math.min(math.max(score, 0.0), 150.0)
+    int t_max = 95
+    int t_min = 40
+    if theme == "Dark"
+        t_max := 80
+        t_min := 20
+    int span = t_max - t_min
+    int t = int(math.round(t_max - s_clamped * span / 150.0))
+    math.max(t_min, math.min(t_max, t))
 
 // V287: Префикс типа зоны для меток
 f_zone_emoji(string ztype) =>
@@ -155,6 +177,15 @@ f_zone_emoji(string ztype) =>
     else if ztype == "MITIG"
         e := "🛡️✓"
     e
+
+// V287.1: Текст tag-метки зоны: эмодзи + тип + score (рисуется внутри бокса)
+f_zone_tag_text(string ztype, float score) =>
+    f_zone_emoji(ztype) + " " + ztype + " · " + str.tostring(score, "#")
+
+// V287.1: Динамический glow-offset — гарантирует видимость glow на узких зонах.
+//         Берём 5% высоты зоны, но не меньше 4× minimum tick инструмента.
+f_glow_pad(float top, float bot) =>
+    math.max(syminfo.mintick * 4.0, (top - bot) * 0.05)
 
 // ==========================================
 // БЛОК 1: Данные — локальные вычисления + значения по умолчанию из ENGINE
@@ -268,6 +299,17 @@ group_hints = "💡 Торговые подсказки"
 show_hints       = input.bool(true, "Показывать подсказки входа/выхода", tooltip="Подсказки в реальном времени: вход в зонах поддержки/сопротивления, выход при структурных сигналах. Чередование: вход → выход → вход → ...", group=group_hints)
 hint_zone_dist   = input.float(2.0, "Макс. дистанция до зоны (ATR)", minval=0.5, maxval=5.0, step=0.5, tooltip="Максимальное расстояние от цены до зоны для сигнала входа (в единицах ATR)", group=group_hints)
 hint_min_score   = input.int(40, "Мин. Score зоны", minval=10, maxval=150, step=10, tooltip="Минимальный балл зоны для генерации подсказки на вход", group=group_hints)
+// V287.1: магические константы state-machine вынесены в inputs (см. PROMPT_IMPROVEMENT.md §3.2.1)
+hint_touch_tol_atr   = input.float(0.05, "Допуск касания зоны (×ATR)", minval=0.01, maxval=0.50, step=0.01, tooltip="Касанием зоны считается, если расстояние цены до зоны ≤ этого значения (в единицах ATR). Меньше = строже = меньше сигналов.", group=group_hints)
+hint_cooldown_bars   = input.int(3,    "Кулдаун после выхода (бары)", minval=1,    maxval=20,   step=1,    tooltip="Минимальная пауза между Exit и новым ZONE_DETECTED. Защита от мгновенного перевхода.", group=group_hints)
+hint_max_bars_pos    = input.int(100,  "Time-stop (бары в позиции)",  minval=10,   maxval=500,  step=10,   tooltip="Принудительный выход из позиции, если она держится дольше указанного количества баров.", group=group_hints)
+hint_min_confl_user  = input.int(2,    "Мин. confluence-факторов",    minval=1,    maxval=6,    step=1,    tooltip="Минимум подтверждающих факторов для входа (тренд / VWAP / закрытие свечи / engulfing / SFP / BOS). Эффективное значение = max(этот input, ENGINE confluence).", group=group_hints)
+hint_compact_mode    = input.bool(false, "Компактные метки входа (1 строка)", tooltip="Краткий вид метки входа для младших ТФ: одна строка вместо 8. Пример: '🟢 LONG OB @1.234 R:R 1.5 SL 1.200'.", group=group_hints)
+
+// V287.1: тема графика — управляет диапазоном прозрачности зон
+group_theme  = "🎨 Тема графика и зоны"
+chart_theme_v = input.string("Auto", "Тема графика для прозрачности зон", options=["Auto","Light","Dark"], tooltip="Влияет ТОЛЬКО на прозрачность фона зон. 'Light'/'Auto' — диапазон 95→40 (для светлых тем). 'Dark' — диапазон 80→20 (зоны заметнее на тёмном фоне).", group=group_theme)
+show_zone_tag = input.bool(true, "Подписи типа зоны в боксах", tooltip="Маленькая метка у правой границы каждой зоны: эмодзи + тип (OB/BB/RZ/IMB/...) + score. Помогает мгновенно понять, что за зона.", group=group_theme)
 
 // V280: Session boxes (moved from ENGINE)
 group_sess_v  = "🕐 Session Boxes"
@@ -285,6 +327,7 @@ c_ovrl_v      = input.color(color.new(color.red, 85), "Overlap Color", group=gro
 // V280: PD band visualization (moved from ENGINE)
 group_pd_v    = "📊 Premium / Discount"
 show_pd_v     = input.bool(true, "Показывать PD-зоны", group=group_pd_v)
+show_pd_label = input.bool(false, "Подписи PREMIUM / DISCOUNT в полосе", tooltip="Добавляет текстовые метки 'PREMIUM' (верх) и 'DISCOUNT' (низ) на правый край PD-полосы.", group=group_pd_v)
 
 // V282: Support/Resistance zone visualization
 group_zones_v = "🟢🔴 Зоны поддержки / сопротивления"
@@ -605,8 +648,9 @@ int HS_PARTIAL_L  = 8
 int HS_PARTIAL_S  = 9
 int HS_EXIT       = 10
 
-int HINT_COOLDOWN_BARS    = 3       // мин. пауза между Exit и новым ZONE_DETECTED
-int MAX_BARS_IN_POSITION  = 100     // time-stop
+// V287.1: переведено на пользовательские inputs (см. group_hints)
+int HINT_COOLDOWN_BARS    = math.max(1, hint_cooldown_bars)   // мин. пауза между Exit и новым ZONE_DETECTED
+int MAX_BARS_IN_POSITION  = math.max(10, hint_max_bars_pos)   // time-stop
 
 // === Состояние (var — сохраняется между барами) ===
 var int    hint_state         = 0   // = HS_WAIT
@@ -658,9 +702,10 @@ else if _zone_is_resist and v_res1_top > 0
     [_lt_r, _ltier_r, _lscore_r, _lprop_r, _lbull_r] = f_decode_zone_meta(v_res1_meta)
     _top1_lookup_type := _lt_r
 
-// Touch detection — цена касается зоны (dist <= 0.05 ATR ≈ touch tolerance)
-bool _touched_long  = _zone_is_support and v_top1_dist <= 0.05
-bool _touched_short = _zone_is_resist  and v_top1_dist <= 0.05
+// Touch detection — цена касается зоны (dist <= hint_touch_tol_atr ≈ touch tolerance)
+// V287.1: допуск касания вынесен в input (hint_touch_tol_atr)
+bool _touched_long  = _zone_is_support and v_top1_dist <= hint_touch_tol_atr
+bool _touched_short = _zone_is_resist  and v_top1_dist <= hint_touch_tol_atr
 
 // Trend confirmation
 bool _trend_long  = v_global_bull or (v_itf_bull and not v_global_bear)
@@ -685,8 +730,8 @@ bool _engulf_bear = close < open and close[1] > open[1] and close < open[1] and 
 int _confl_long  = (_trend_long  ? 1 : 0) + (_vwap_long  ? 1 : 0) + (_bull_close ? 1 : 0) + (_engulf_bull ? 1 : 0) + (_sfp_long  ? 1 : 0) + (v_bos_signal > 0 ? 1 : 0)
 int _confl_short = (_trend_short ? 1 : 0) + (_vwap_short ? 1 : 0) + (_bear_close ? 1 : 0) + (_engulf_bear ? 1 : 0) + (_sfp_short ? 1 : 0) + (v_bos_signal < 0 ? 1 : 0)
 
-bool _confirm_long  = _confl_long  >= math.max(2, math.round(v_min_confl))
-bool _confirm_short = _confl_short >= math.max(2, math.round(v_min_confl))
+bool _confirm_long  = _confl_long  >= math.max(hint_min_confl_user, math.round(v_min_confl))
+bool _confirm_short = _confl_short >= math.max(hint_min_confl_user, math.round(v_min_confl))
 
 // Cooldown gate
 int  _bars_since_exit = na(hint_exit_bar) ? 9999 : (bar_index - hint_exit_bar)
@@ -1113,30 +1158,44 @@ if show_hints
         float _el_rr2  = not na(_el_risk) and _el_risk > 0 and not na(hint_tp2_price) ? f_safe_div(hint_tp2_price - hint_entry_price, _el_risk) : na
         // V287: Zone type emoji and decoded tier
         string _el_z_emoji = f_zone_emoji(hint_zone_type)
-        string _el_rr_txt  = not na(_el_rr1) ? "\n📐 R:R " + str.tostring(_el_rr1, "#.#") + " | " + str.tostring(_el_rr2, "#.#") : ""
-        string _el_sl_txt  = not na(hint_sl_price) ? "\n🛑 SL: " + f_mt(hint_sl_price) : ""
-        string _el_tp_txt  = not na(hint_tp1_price) ? "\n🎯 TP1: " + f_mt(hint_tp1_price) : ""
-        string _el_tp2_txt = not na(hint_tp2_price) ? "\n🚀 TP2: " + f_mt(hint_tp2_price) : ""
-        string _el_reason_txt = "\n💡 " + hint_entry_reason
-        string _el_part1 = "🟢 ВХОД LONG " + _el_z_emoji + " " + hint_zone_type + "\n💰 " + f_mt(nz(hint_entry_price, close))
-        string _el_part2 = "\n⭐ " + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
-        string _el_txt = _el_part1 + _el_part2 + _el_rr_txt + _el_sl_txt + _el_tp_txt + _el_tp2_txt + _el_reason_txt
-        label.new(bar_index, low, _el_txt, style=label.style_label_up, color=color.new(#00C853, 10), textcolor=color.white, size=size.normal, yloc=yloc.belowbar)
+        string _el_txt = ""
+        if hint_compact_mode
+            // V287.1: компактная одностроковая метка (для младших ТФ)
+            string _el_rr_c = not na(_el_rr1) ? " R:R " + str.tostring(_el_rr1, "#.#") : ""
+            string _el_sl_c = not na(hint_sl_price) ? " SL " + f_mt(hint_sl_price) : ""
+            _el_txt := "🟢 LONG " + hint_zone_type + " @" + f_mt(nz(hint_entry_price, close)) + _el_rr_c + _el_sl_c
+        else
+            string _el_rr_txt  = not na(_el_rr1) ? "\n📐 R:R " + str.tostring(_el_rr1, "#.#") + " | " + str.tostring(_el_rr2, "#.#") : ""
+            string _el_sl_txt  = not na(hint_sl_price) ? "\n🛑 SL: " + f_mt(hint_sl_price) : ""
+            string _el_tp_txt  = not na(hint_tp1_price) ? "\n🎯 TP1: " + f_mt(hint_tp1_price) : ""
+            string _el_tp2_txt = not na(hint_tp2_price) ? "\n🚀 TP2: " + f_mt(hint_tp2_price) : ""
+            string _el_reason_txt = "\n💡 " + hint_entry_reason
+            string _el_part1 = "🟢 ВХОД LONG " + _el_z_emoji + " " + hint_zone_type + "\n💰 " + f_mt(nz(hint_entry_price, close))
+            string _el_part2 = "\n⭐ " + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
+            _el_txt := _el_part1 + _el_part2 + _el_rr_txt + _el_sl_txt + _el_tp_txt + _el_tp2_txt + _el_reason_txt
+        label.new(bar_index, low, _el_txt, style=label.style_label_up, color=color.new(#00C853, 10), textcolor=color.white, size=hint_compact_mode ? size.small : size.normal, yloc=yloc.belowbar)
 
     if hint_entry_short
         float _es_risk = not na(hint_orig_sl) and hint_orig_sl > hint_entry_price ? (hint_orig_sl - hint_entry_price) : na
         float _es_rr1  = not na(_es_risk) and _es_risk > 0 and not na(hint_tp1_price) ? f_safe_div(hint_entry_price - hint_tp1_price, _es_risk) : na
         float _es_rr2  = not na(_es_risk) and _es_risk > 0 and not na(hint_tp2_price) ? f_safe_div(hint_entry_price - hint_tp2_price, _es_risk) : na
         string _es_z_emoji = f_zone_emoji(hint_zone_type)
-        string _es_rr_txt  = not na(_es_rr1) ? "\n📐 R:R " + str.tostring(_es_rr1, "#.#") + " | " + str.tostring(_es_rr2, "#.#") : ""
-        string _es_sl_txt  = not na(hint_sl_price) ? "\n🛑 SL: " + f_mt(hint_sl_price) : ""
-        string _es_tp_txt  = not na(hint_tp1_price) ? "\n🎯 TP1: " + f_mt(hint_tp1_price) : ""
-        string _es_tp2_txt = not na(hint_tp2_price) ? "\n🚀 TP2: " + f_mt(hint_tp2_price) : ""
-        string _es_reason_txt = "\n💡 " + hint_entry_reason
-        string _es_part1 = "🔴 ВХОД SHORT " + _es_z_emoji + " " + hint_zone_type + "\n💰 " + f_mt(nz(hint_entry_price, close))
-        string _es_part2 = "\n⭐ " + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
-        string _es_txt = _es_part1 + _es_part2 + _es_rr_txt + _es_sl_txt + _es_tp_txt + _es_tp2_txt + _es_reason_txt
-        label.new(bar_index, high, _es_txt, style=label.style_label_down, color=color.new(#FF1744, 10), textcolor=color.white, size=size.normal, yloc=yloc.abovebar)
+        string _es_txt = ""
+        if hint_compact_mode
+            // V287.1: компактная одностроковая метка
+            string _es_rr_c = not na(_es_rr1) ? " R:R " + str.tostring(_es_rr1, "#.#") : ""
+            string _es_sl_c = not na(hint_sl_price) ? " SL " + f_mt(hint_sl_price) : ""
+            _es_txt := "🔴 SHORT " + hint_zone_type + " @" + f_mt(nz(hint_entry_price, close)) + _es_rr_c + _es_sl_c
+        else
+            string _es_rr_txt  = not na(_es_rr1) ? "\n📐 R:R " + str.tostring(_es_rr1, "#.#") + " | " + str.tostring(_es_rr2, "#.#") : ""
+            string _es_sl_txt  = not na(hint_sl_price) ? "\n🛑 SL: " + f_mt(hint_sl_price) : ""
+            string _es_tp_txt  = not na(hint_tp1_price) ? "\n🎯 TP1: " + f_mt(hint_tp1_price) : ""
+            string _es_tp2_txt = not na(hint_tp2_price) ? "\n🚀 TP2: " + f_mt(hint_tp2_price) : ""
+            string _es_reason_txt = "\n💡 " + hint_entry_reason
+            string _es_part1 = "🔴 ВХОД SHORT " + _es_z_emoji + " " + hint_zone_type + "\n💰 " + f_mt(nz(hint_entry_price, close))
+            string _es_part2 = "\n⭐ " + f_hint_tier(v_top1_score) + " (" + str.tostring(v_top1_score, "#") + " pts)"
+            _es_txt := _es_part1 + _es_part2 + _es_rr_txt + _es_sl_txt + _es_tp_txt + _es_tp2_txt + _es_reason_txt
+        label.new(bar_index, high, _es_txt, style=label.style_label_down, color=color.new(#FF1744, 10), textcolor=color.white, size=hint_compact_mode ? size.small : size.normal, yloc=yloc.abovebar)
 
     // V287: Partial TP1 labels (на промежуточной фиксации 50%)
     if hint_partial_tp1_long
@@ -1237,8 +1296,15 @@ if show_pd_v
             _vis_pd_ln_h := line.new(bar_index, _pd_h, bar_index, _pd_h, color=color.new(color.red,   70))
             _vis_pd_ln_l := line.new(bar_index, _pd_l, bar_index, _pd_l, color=color.new(color.green, 70))
             _vis_pd_ln_m := line.new(bar_index, _pd_m, bar_index, _pd_m, color=color.new(color.gray,  50), style=line.style_dotted)
-            _vis_pd_bx_u := box.new(bar_index, _pd_h, bar_index, _pd_m, border_color=na, bgcolor=color.new(color.red,   90))
-            _vis_pd_bx_l := box.new(bar_index, _pd_m, bar_index, _pd_l, border_color=na, bgcolor=color.new(color.green, 90))
+            // V287.1: опциональные подписи PREMIUM / DISCOUNT в PD-боксах
+            string _pd_u_txt = show_pd_label ? "PREMIUM" : ""
+            string _pd_l_txt = show_pd_label ? "DISCOUNT" : ""
+            _vis_pd_bx_u := box.new(bar_index, _pd_h, bar_index, _pd_m, border_color=na, bgcolor=color.new(color.red,   90),
+                 text=_pd_u_txt, text_size=size.tiny, text_color=color.new(color.red, 30),
+                 text_halign=text.align_right, text_valign=text.align_top)
+            _vis_pd_bx_l := box.new(bar_index, _pd_m, bar_index, _pd_l, border_color=na, bgcolor=color.new(color.green, 90),
+                 text=_pd_l_txt, text_size=size.tiny, text_color=color.new(color.green, 30),
+                 text_halign=text.align_right, text_valign=text.align_bottom)
         line.set_x2(_vis_pd_ln_h, bar_index)
         line.set_x2(_vis_pd_ln_l, bar_index)
         line.set_x2(_vis_pd_ln_m, bar_index)
@@ -1322,57 +1388,69 @@ if show_zones_v and use_engine_data
     // ── Render Sup1 (best support zone) ──
     if v_sup1_top > 0 and v_sup1_bot > 0 and v_sup1_top > v_sup1_bot
         color _s1_base    = f_zone_color(v_sup1_ztype, true)
-        int   _s1_transp  = f_score_to_transp_v(v_sup1_score_d)
+        int   _s1_transp  = f_score_to_transp_v(v_sup1_score_d, chart_theme_v)
         color _s1_bg      = color.new(_s1_base, _s1_transp)
         color _s1_border  = color.new(_s1_base, 0)
         string _s1_st = f_zone_border_style(v_sup1_ztype)
         int   _s1_w       = f_zone_border_width(v_sup1_ztype)
+        string _s1_tag = show_zone_tag ? f_zone_tag_text(v_sup1_ztype, v_sup1_score_d) : ""
         _vis_z_sup1 := box.new(_zbox_left, v_sup1_top, bar_index + 5, v_sup1_bot,
              border_color=_s1_border, bgcolor=_s1_bg,
-             border_style=_s1_st, border_width=_s1_w, xloc=xloc.bar_index)
-        // Glow lines for STRONG/BEST (score >= 80)
+             border_style=_s1_st, border_width=_s1_w, xloc=xloc.bar_index,
+             text=_s1_tag, text_size=size.small, text_color=color.new(color.white, 10),
+             text_halign=text.align_right, text_valign=text.align_top)
+        // Glow lines for STRONG/BEST (score >= 80) — V287.1: dynamic offset
         if v_sup1_score_d >= 80.0
-            float _s1_pad = (v_sup1_top - v_sup1_bot) * 0.05
+            float _s1_pad = f_glow_pad(v_sup1_top, v_sup1_bot)
             _vis_glow_sup1_t := line.new(_zbox_left, v_sup1_top + _s1_pad, bar_index + 5, v_sup1_top + _s1_pad, color=color.new(_s1_base, 50), width=2, xloc=xloc.bar_index)
             _vis_glow_sup1_b := line.new(_zbox_left, v_sup1_bot - _s1_pad, bar_index + 5, v_sup1_bot - _s1_pad, color=color.new(_s1_base, 50), width=2, xloc=xloc.bar_index)
 
     // ── Render Sup2 (second-best support zone) ──
     if v_sup2_top > 0 and v_sup2_bot > 0 and v_sup2_top > v_sup2_bot
         color _s2_base    = f_zone_color(v_sup2_ztype, true)
-        int   _s2_transp  = math.min(95, f_score_to_transp_v(v_sup2_score_d) + 10)  // slightly more transparent than Top1
+        int   _s2_transp  = math.min(95, f_score_to_transp_v(v_sup2_score_d, chart_theme_v) + 10)  // slightly more transparent than Top1
         color _s2_bg      = color.new(_s2_base, _s2_transp)
         color _s2_border  = color.new(_s2_base, 30)
         string _s2_st = f_zone_border_style(v_sup2_ztype)
+        string _s2_tag = show_zone_tag ? f_zone_tag_text(v_sup2_ztype, v_sup2_score_d) : ""
         _vis_z_sup2 := box.new(_zbox_left, v_sup2_top, bar_index + 5, v_sup2_bot,
              border_color=_s2_border, bgcolor=_s2_bg,
-             border_style=_s2_st, border_width=1, xloc=xloc.bar_index)
+             border_style=_s2_st, border_width=1, xloc=xloc.bar_index,
+             text=_s2_tag, text_size=size.tiny, text_color=color.new(color.white, 25),
+             text_halign=text.align_right, text_valign=text.align_top)
 
     // ── Render Res1 (best resistance zone) ──
     if v_res1_top > 0 and v_res1_bot > 0 and v_res1_top > v_res1_bot
         color _r1_base    = f_zone_color(v_res1_ztype, false)
-        int   _r1_transp  = f_score_to_transp_v(v_res1_score_d)
+        int   _r1_transp  = f_score_to_transp_v(v_res1_score_d, chart_theme_v)
         color _r1_bg      = color.new(_r1_base, _r1_transp)
         color _r1_border  = color.new(_r1_base, 0)
         string _r1_st = f_zone_border_style(v_res1_ztype)
         int   _r1_w       = f_zone_border_width(v_res1_ztype)
+        string _r1_tag = show_zone_tag ? f_zone_tag_text(v_res1_ztype, v_res1_score_d) : ""
         _vis_z_res1 := box.new(_zbox_left, v_res1_top, bar_index + 5, v_res1_bot,
              border_color=_r1_border, bgcolor=_r1_bg,
-             border_style=_r1_st, border_width=_r1_w, xloc=xloc.bar_index)
+             border_style=_r1_st, border_width=_r1_w, xloc=xloc.bar_index,
+             text=_r1_tag, text_size=size.small, text_color=color.new(color.white, 10),
+             text_halign=text.align_right, text_valign=text.align_bottom)
         if v_res1_score_d >= 80.0
-            float _r1_pad = (v_res1_top - v_res1_bot) * 0.05
+            float _r1_pad = f_glow_pad(v_res1_top, v_res1_bot)
             _vis_glow_res1_t := line.new(_zbox_left, v_res1_top + _r1_pad, bar_index + 5, v_res1_top + _r1_pad, color=color.new(_r1_base, 50), width=2, xloc=xloc.bar_index)
             _vis_glow_res1_b := line.new(_zbox_left, v_res1_bot - _r1_pad, bar_index + 5, v_res1_bot - _r1_pad, color=color.new(_r1_base, 50), width=2, xloc=xloc.bar_index)
 
     // ── Render Res2 (second-best resistance zone) ──
     if v_res2_top > 0 and v_res2_bot > 0 and v_res2_top > v_res2_bot
         color _r2_base    = f_zone_color(v_res2_ztype, false)
-        int   _r2_transp  = math.min(95, f_score_to_transp_v(v_res2_score_d) + 10)
+        int   _r2_transp  = math.min(95, f_score_to_transp_v(v_res2_score_d, chart_theme_v) + 10)
         color _r2_bg      = color.new(_r2_base, _r2_transp)
         color _r2_border  = color.new(_r2_base, 30)
         string _r2_st = f_zone_border_style(v_res2_ztype)
+        string _r2_tag = show_zone_tag ? f_zone_tag_text(v_res2_ztype, v_res2_score_d) : ""
         _vis_z_res2 := box.new(_zbox_left, v_res2_top, bar_index + 5, v_res2_bot,
              border_color=_r2_border, bgcolor=_r2_bg,
-             border_style=_r2_st, border_width=1, xloc=xloc.bar_index)
+             border_style=_r2_st, border_width=1, xloc=xloc.bar_index,
+             text=_r2_tag, text_size=size.tiny, text_color=color.new(color.white, 25),
+             text_halign=text.align_right, text_valign=text.align_bottom)
 
 
 // V274: Alert conditions for trade hints
