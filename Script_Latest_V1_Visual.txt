@@ -140,10 +140,13 @@ f_zone_border_style(string ztype) =>
 f_zone_border_width(string ztype) =>
     ztype == "OB" or ztype == "BB" or ztype == "PROP" or ztype == "MITIG" ? 2 : 1
 
-// V287: Транспарентность из decoded score (плавный градиент 95→40)
-// V287.1: Тема графика управляет диапазоном (Light = 95→40, Dark = 80→20).
-//         theme: "Light" / "Dark" / "Auto". В режиме "Auto" работает как Light
-//         (исторически безопасный диапазон, не ломает существующие настройки).
+// V287: Транспарентность из decoded score (плавный градиент score → transparency)
+// V287.1: Параметр theme управляет диапазоном:
+//   "Light" / "Auto"  → 95→40 (исторически безопасный диапазон, сохранён по
+//                       умолчанию для обратной совместимости с существующими
+//                       пользовательскими настройками — поведение не меняется,
+//                       пока пользователь явно не переключится на "Dark");
+//   "Dark"            → 80→20 (зоны заметнее на тёмном фоне).
 f_score_to_transp_v(float score, string theme) =>
     float s_clamped = math.min(math.max(score, 0.0), 150.0)
     int t_max = 95
