@@ -305,8 +305,14 @@ PARTIAL_TP1 → EXIT → cooldown → WAIT`. Confluence-счётчик из 6 ф
   trending (regime 0/1).
 
 #### 9.3.4. Killzone-бейдж в entry-метках
-- **Идея**: в ICT торговля идёт почти исключительно в килзонах
-  (London 03:00–11:30 NY, NY 09:30–16:00 NY, Overlap 09:30–11:30, Asia 19:00–03:00).
+- **Идея**: в ICT торговля идёт почти исключительно в килзонах. Все
+  времена ниже даны в **NY-таймзоне** (`America/New_York`) — той же, что
+  использует функция `f_in_session` в коде:
+  - **London**: 03:00–11:30 NY
+  - **NY**: 09:30–16:00 NY
+  - **London×NY Overlap**: 09:30–11:30 NY
+  - **Asia (Tokyo)**: 19:00–03:00 NY (разворот через полночь NY)
+
   Знание времени дня — критично.
 - **Реализация**: к тексту entry-метки (long и short, full и compact) приклеивается
   `\n🌐 LDN×NY Overlap` / `\n🗽 NY Killzone` / `\n🇬🇧 London Killzone` / `\n🗾 Asia Killzone`

@@ -201,6 +201,19 @@ f_zone_tag_text(string ztype, float score) =>
 f_glow_pad(float top, float bot) =>
     math.max(syminfo.mintick * 4.0, (top - bot) * 0.05)
 
+// V287.2: Helper для sparkline-блока (Trend Strength meter).
+// Возвращает Unicode-символ блока в зависимости от индекса позиции (1..8) —
+// первые 2 позиции тонкие, средние нормальные, последние толстые.
+f_spark_block(int idx) =>
+    string ch = "▂"
+    if idx > 6
+        ch := "█"
+    else if idx > 4
+        ch := "▆"
+    else if idx > 2
+        ch := "▄"
+    ch
+
 // ==========================================
 // БЛОК 1: Данные — локальные вычисления + значения по умолчанию из ENGINE
 // ==========================================
@@ -355,7 +368,7 @@ eql_eqh_lookback     = input.int(50,    "EQH/EQL: окно поиска пары
 show_sweeps          = input.bool(true,  "Liquidity Sweep markers", tooltip="Рисует ▲/▼ под/над баром, у которого фитиль пробил последний swing-pivot, но закрытие осталось внутри (классический stop hunt / SFP).", group=group_adv)
 sweep_pivot_len      = input.int(8,     "Sweep: длина пивота",              minval=3,    maxval=30,   step=1,    tooltip="Длина left/right для определения swing-pivot, который сметается фитилём.", group=group_adv)
 
-show_ote             = input.bool(false, "Optimal Trade Entry (OTE) zone", tooltip="Зона Fibonacci 0.618–0.786 ретрейсмента последнего импульса. Рисуется как полупрозрачный бокс — премиум для шортов / дисконт для лонгов.", group=group_adv)
+show_ote             = input.bool(false, "Optimal Trade Entry (OTE) zone", tooltip="Зона Fibonacci 0.618–0.786 ретрейсмента последнего импульса. Рисуется как полупрозрачный бокс — премиум для шортов / дисконт для лонгов. ⚠ Внутренние ta.highest/lowest вычисляются на каждом баре независимо от тумблера (требование Pine v6 для согласованности series history) — небольшая фоновая нагрузка даже при выключенной опции.", group=group_adv)
 ote_swing_lookback   = input.int(80,    "OTE: окно последнего импульса (бары)", minval=20, maxval=500, step=10,    tooltip="Использовать highest/lowest за N баров как границы импульса для расчёта Fibonacci.", group=group_adv)
 ote_fib_low          = input.float(0.618, "OTE: нижняя Fib",                 minval=0.5,  maxval=0.9,  step=0.001, tooltip="Нижняя граница OTE (по умолчанию 0.618).", group=group_adv)
 ote_fib_high         = input.float(0.786, "OTE: верхняя Fib",                 minval=0.5,  maxval=0.95, step=0.001, tooltip="Верхняя граница OTE (по умолчанию 0.786).", group=group_adv)
@@ -1153,12 +1166,9 @@ if v_regime == 0.0 or v_regime == 1.0    // Trending или Strong Trend (не R
     _ts_score += 1
 _ts_score := math.min(8, math.max(0, _ts_score))
 string _ts_bar = ""
-// Sparkline блоки: ▁▂▃▄▅▆▇█
+// Sparkline блоки: ▁ (filler) / ▂▄▆█ (по силе позиции — см. f_spark_block)
 for i = 1 to 8
-    if i <= _ts_score
-        _ts_bar := _ts_bar + (i <= 2 ? "▂" : i <= 4 ? "▄" : i <= 6 ? "▆" : "█")
-    else
-        _ts_bar := _ts_bar + "▁"
+    _ts_bar := _ts_bar + (i <= _ts_score ? f_spark_block(i) : "▁")
 color _ts_col = _ts_score >= 6 ? color.lime : _ts_score >= 4 ? color.yellow : _ts_score >= 2 ? color.orange : color.gray
 
 // ── Power of 3 (AMD: Accumulation – Manipulation – Distribution) ──
