@@ -26,6 +26,14 @@
 //   • Trend Strength meter — sparkline ▁▂▃▄▅▆▇█ из 5 компонент (HTF/ITF/
 //     согласованность/VWAP-distance/Z-Score/Regime).
 //   • Power of 3 (AMD) — фаза дневного цикла ICT в дашборде.
+// V287.3 (UX pass — упрощение подключения ENGINE↔VISUAL):
+//   • Инструкция в header-блоке переписана: drag&drop VISUAL поверх ENGINE
+//     теперь явно отмечен как РЕКОМЕНДУЕМЫЙ способ (один шаг — все каналы
+//     подключаются автоматически по совпадению порядка plot()).
+//   • Tooltip канала «⚡ VIS: Version» содержит пошаговую инструкцию 1-2-3.
+//   • Standalone-предупреждение на графике стало многострочным, содержит
+//     явные шаги для пользователя (а не однострочный намёк).
+//   • Дашборд при отсутствии ENGINE подсказывает действие в шапке.
 // Протокол ENGINE↔VISUAL не менялся — EXPECTED_ENG_VERSION остаётся 287.0.
 indicator("Trading Fluppy VISUAL",
      overlay=true,
@@ -384,17 +392,29 @@ zone_sup_col  = input.color(color.new(#00C853, 70), "Цвет: зоны подд
 zone_res_col  = input.color(color.new(#FF1744, 70), "Цвет: зоны сопротивления", group=group_zones_v)
 
 // ── ENGINE Data Sources─────────────────────────────────────────────────────
-// Подключите ENGINE plot-каналы через input.source() в настройках индикатора.
-// При подключённом ENGINE — данные используются автоматически (определяется по каналу Version).
-// СПОСОБ 1 (быстрый): Добавьте VISUAL поверх ENGINE (drag&drop) — каналы подключатся автоматически
-//   по совпадению порядка plot() в ENGINE и input.source() в VISUAL.
-// СПОСОБ 2 (ручной): ШАГ 1: Подключите "VIS: Version" → "Trading Fluppy ENGINE: ENG: Version"
-//   ШАГ 2: Подключите остальные каналы в том же порядке.
-// Если ENGINE не подключён — используются локальные fallback-значения.
+// ╔═══════════════════════════════════════════════════════════════════════╗
+// ║  КАК ПОДКЛЮЧИТЬ ENGINE К VISUAL (1 раз на график):                    ║
+// ║                                                                       ║
+// ║  ✅ РЕКОМЕНДУЕМЫЙ СПОСОБ (1 шаг, без диалогов):                       ║
+// ║     1. Добавьте на график сначала «Trading Fluppy ENGINE».            ║
+// ║     2. Затем добавьте «Trading Fluppy VISUAL» — TradingView           ║
+// ║        автоматически подставит все каналы input.source() по           ║
+// ║        порядку plot() в ENGINE. Подтверждать ничего не нужно.         ║
+// ║     → В шапке дашборда появится «🟢 ENGINE (Auto ✓)».                 ║
+// ║                                                                       ║
+// ║  🛠 РУЧНОЙ СПОСОБ (если автоподстановка не сработала):                ║
+// ║     1. ⚙ Настройки VISUAL → группа «🔗 ENGINE DATA».                  ║
+// ║     2. У канала «⚡ VIS: Version» выберите                            ║
+// ║        «Trading Fluppy ENGINE: ENG: Version».                         ║
+// ║     3. Подключите остальные каналы в том же порядке сверху вниз.      ║
+// ║                                                                       ║
+// ║  Если ENGINE не подключён — VISUAL работает в Standalone-режиме на   ║
+// ║  локальных fallback-значениях; статистика трейдов будет «N/A».        ║
+// ╚═══════════════════════════════════════════════════════════════════════╝
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
 // V287: Поддерживается V286 (legacy) и V287 (full multi-color)
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="→ Подключите к 'Trading Fluppy ENGINE: ENG: Version'. Ожидается: 287.0 (или 286.0 в legacy режиме). При подключении система автоматически определит ENGINE.", group=group_eng)
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="ШАГ 1 (рекомендуется): просто перетащите VISUAL поверх ENGINE на одном графике — каналы подключатся автоматически по порядку plot().\n\nШАГ 2 (если не сработало): здесь вручную выберите 'Trading Fluppy ENGINE: ENG: Version', затем подключите остальные каналы ниже в том же порядке.\n\nОжидаемое значение: 287.0 (или 286.0 в legacy-режиме). Корректное подключение этого канала включает 'Auto ✓' и подсвечивает дашборд зелёным.", group=group_eng)
 // ── Автоопределение ENGINE по каналу Version (V287: backward compatible с V286) ──
 float EXPECTED_ENG_VERSION = 287.0
 float LEGACY_ENG_VERSION   = 286.0  // V287: поддерживаем V286 как legacy
@@ -1389,9 +1409,11 @@ if barstate.islast and show_dash
             f_dr(43, "⚠️ VERSION", "Ожидается v" + str.tostring(EXPECTED_ENG_VERSION, "#") + ", получено v" + str.tostring(v_eng_version, "#"), color.orange, color.red, t_sz)
         else if use_engine_data and _is_legacy_engine
             f_dr(43, "ℹ️ LEGACY", "ENGINE v" + str.tostring(v_eng_version, "#") + " (V287 multi-color disabled)", color.aqua, color.yellow, t_sz)
-        // Standalone warning with connection hint
+        // Standalone warning with concrete next step
         if not use_engine_data
-            string _standalone_hint = eng_connect_mode == "Auto" ? "Подключите VIS: Version → ENG: Version" : "Режим: Выкл (Force OFF)"
+            string _standalone_hint = eng_connect_mode == "Auto" ?
+                 "Перетащите VISUAL поверх ENGINE (или ⚙→⚡VIS:Version)" :
+                 "⚙ Настройки → Режим подключения → Auto"
             f_dr(44, "⚠️ STANDALONE", _standalone_hint, color.orange, color.yellow, t_sz)
 
         // ── V287.2: Advanced Chart Analysis dashboard rows ──
@@ -1758,14 +1780,29 @@ alertcondition(_sweep_low,  title="🎯 Liquidity Sweep Low",  message="🎯 Swe
 alertcondition(not na(_eqh_price) and high >= _eqh_price, title="💧 EQH Liquidity Hit", message="💧 Цена коснулась пула ликвидности EQH — buy-stops сметены")
 alertcondition(not na(_eql_price) and low  <= _eql_price, title="💧 EQL Liquidity Hit", message="💧 Цена коснулась пула ликвидности EQL — sell-stops сметены")
 
-// Standalone warning label on chart with auto-detect hint
+// Standalone warning label on chart with auto-detect hint and step-by-step instructions
 var label _standalone_warn = na
 if barstate.islast and not use_engine_data
     if not na(_standalone_warn)
         label.delete(_standalone_warn)
-    string _warn_text = eng_connect_mode == "Auto" ? "⚠️ ENGINE не обнаружен. Подключите VIS: Version → ENG: Version" : "⚠️ ENGINE отключён (Force OFF)"
+    string _warn_text = eng_connect_mode == "Auto" ?
+         "⚠️ ENGINE не обнаружен — VISUAL работает в Standalone-режиме\n" +
+         "──────────────────────────────────────────\n" +
+         "Как подключить (1 раз на график):\n" +
+         "  1. Добавьте на график «Trading Fluppy ENGINE».\n" +
+         "  2. Поверх него добавьте «Trading Fluppy VISUAL» —\n" +
+         "     каналы подключатся автоматически.\n" +
+         "Если не сработало:\n" +
+         "  ⚙ Настройки → 🔗 ENGINE DATA → ⚡ VIS: Version\n" +
+         "     → «Trading Fluppy ENGINE: ENG: Version»." :
+         "⚠️ ENGINE отключён принудительно (Force OFF)\n" +
+         "──────────────────────────────────────────\n" +
+         "Чтобы включить:\n" +
+         "  ⚙ Настройки VISUAL → 🔗 ENGINE DATA →\n" +
+         "     «Режим подключения ENGINE» → выберите «Auto»."
     _standalone_warn := label.new(bar_index, high * 1.002,
          _warn_text,
-         color=color.new(color.orange, 60),
-         textcolor=color.white, size=size.small,
-         style=label.style_label_down)
+         color=color.new(color.orange, 30),
+         textcolor=color.white, size=size.normal,
+         style=label.style_label_down,
+         textalign=text.align_left)
