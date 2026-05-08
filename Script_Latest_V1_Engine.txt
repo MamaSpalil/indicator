@@ -4682,9 +4682,12 @@ f_create_new_zones() =>
                     int imb_win = math.max(2, math.min(inp_imb_lookback, MAX_OFFSET))
                     float imb_h = ta.highest(high, imb_win)
                     float imb_l = ta.lowest(low,  imb_win)
-                    if imb_h <= imb_l
-                        imb_h := high
-                        imb_l := low
+                    // Edge case: на первых барах ta.highest/lowest могут совпасть — расширяем до
+                    // минимально-валидной ширины 0.5×ATR вокруг текущей цены, чтобы box не был вырожденным
+                    if na(imb_h) or na(imb_l) or imb_h <= imb_l
+                        float _half = math.max(syminfo.mintick, nz(atr_val, 0.0) * 0.25)
+                        imb_h := close + _half
+                        imb_l := close - _half
                     string imb_tier = f_tier(_imb_score)
                     color imb_col = c_imb_base
                     box bx_imb = box.new(bar_index - imb_win + 1, imb_h, bar_index + 5, imb_l,
