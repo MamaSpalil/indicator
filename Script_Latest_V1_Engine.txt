@@ -5188,9 +5188,11 @@ if array.size(zone_db) > 0 and is_actionable_bar
 
             bool is_bb_creation_bar = (z.z_type == "BB" and z.created_at == bar_index)
 
-            // V250: блокируем сигнал если req_fvg_seq включён и FVG зоны ещё не заполнены
+            // V250/V287.6: блокируем сигнал если req_fvg_seq включён и FVG зоны ещё не достаточно заполнен.
+            // Раньше любой неисчезнувший FVG блокировал вход навсегда; теперь используем уже отслеживаемый
+            // fvg_fill_pct и считаем секвенцию выполненной при ≥50% mitigation (Consequent Encroachment).
             bool fvg_seq_ok = true
-            if req_fvg_seq and not na(z.fvg_gfx)
+            if req_fvg_seq and not na(z.fvg_gfx) and z.fvg_fill_pct < 0.5
                 fvg_seq_ok := false
 
             if (tr_ok and pd_ok and rsi_ok and idm_ok and itf_ok and conf_ok and mss_ok and fvg_seq_ok) and not is_bb_creation_bar and not already_in_trade
