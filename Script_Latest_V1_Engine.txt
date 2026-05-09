@@ -888,10 +888,11 @@ if tuning_mode == "Auto-Adaptive"
     // V287.5-fix: используем пользовательские настройки `pivot_*_knt(_r)` как базу для Auto-Adaptive,
     // ранее эти инпуты были «мертвы» (литералы 5/6/12/24/31 / 15/12/5/5/5 жёстко вшиты).
     // Volatility-факторы (inv_vol/htf_scale/pr_scale) применяются дальше как мультипликаторы.
-    array<float> TF_SUP_PL  = array.from(float(pivot_left_mc_knt),  float(pivot_left_sc_knt),  float(pivot_left_day_knt),  float(pivot_left_sw_knt),  float(pivot_left_mcr_knt))
-    array<float> TF_SUP_PR  = array.from(float(pivot_right_mc_knt), float(pivot_right_sc_knt), float(pivot_right_day_knt), float(pivot_right_sw_knt), float(pivot_right_mcr_knt))
-    array<float> TF_RES_PL  = array.from(float(pivot_left_mc_knt_r),  float(pivot_left_sc_knt_r),  float(pivot_left_day_knt_r),  float(pivot_left_sw_knt_r),  float(pivot_left_mcr_knt_r))
-    array<float> TF_RES_PR  = array.from(float(pivot_right_mc_knt_r), float(pivot_right_sc_knt_r), float(pivot_right_day_knt_r), float(pivot_right_sw_knt_r), float(pivot_right_mcr_knt_r))
+    // var: пользовательские input.int не меняются в рантайме, поэтому массивы инициализируются один раз.
+    var array<float> TF_SUP_PL  = array.from(float(pivot_left_mc_knt),  float(pivot_left_sc_knt),  float(pivot_left_day_knt),  float(pivot_left_sw_knt),  float(pivot_left_mcr_knt))
+    var array<float> TF_SUP_PR  = array.from(float(pivot_right_mc_knt), float(pivot_right_sc_knt), float(pivot_right_day_knt), float(pivot_right_sw_knt), float(pivot_right_mcr_knt))
+    var array<float> TF_RES_PL  = array.from(float(pivot_left_mc_knt_r),  float(pivot_left_sc_knt_r),  float(pivot_left_day_knt_r),  float(pivot_left_sw_knt_r),  float(pivot_left_mcr_knt_r))
+    var array<float> TF_RES_PR  = array.from(float(pivot_right_mc_knt_r), float(pivot_right_sc_knt_r), float(pivot_right_day_knt_r), float(pivot_right_sw_knt_r), float(pivot_right_mcr_knt_r))
 
     // ── Dynamic Cluster Sizes (via lookup) ───────────────────────────────
     int dyn_cl_wide = math.max(1, math.min(12, math.round(1 * clust_scale)))
@@ -2736,7 +2737,7 @@ f_calc_fvg_on_candle(int impulse_idx, bool is_bull, float current_atr) =>
                 b := c1_h
                 g_type := "Marubozu"
             else if c2_o >= (c1_o + tol) and c2_l > c1_h
-                // V287.5-fix: возвращаем реальные границы гэпа (c1.high → c2.low), а не open-open
+                // V287.5-fix: возвращаем реальные границы гэпа (c1_h → c2_l), а не open-open
                 gap_size := (c2_l - c1_h) / atr_dampened
                 t := c2_l
                 b := c1_h
@@ -2763,7 +2764,7 @@ f_calc_fvg_on_candle(int impulse_idx, bool is_bull, float current_atr) =>
                 b := c3_h
                 g_type := "Marubozu"
             else if c1_o >= (c2_o + tol) and c2_h < c1_l
-                // V287.5-fix: возвращаем реальные границы медвежьего гэпа (c1.low → c2.high)
+                // V287.5-fix: возвращаем реальные границы медвежьего гэпа (c1_l → c2_h)
                 gap_size := (c1_l - c2_h) / atr_dampened
                 t := c1_l
                 b := c2_h
