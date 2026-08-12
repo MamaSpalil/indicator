@@ -74,6 +74,11 @@ float IMB_MAX_ATR_MULT = 1.5
 // интереса выше ~2 ATR перестаёт быть зоной и становится диапазоном.
 float MERGE_MAX_ATR_MULT = 2.0
 
+// V291: предельная высота OB/BB-зоны при создании (в ATR). Прежний гейт 8·ATR
+// пропускал зоны, которые по SMC уже являются диапазоном, а не зоной интереса,
+// и противоречил MERGE_MAX_ATR_MULT (результат слияния был жёстче исходника).
+float OB_MAX_ATR_MULT = 2.0
+
 // Универсальный clamp: гарантирует что offset в [0, ceil]
 f_clamp(int val, int ceil) => math.max(0, math.min(val, ceil))
 
@@ -1448,6 +1453,12 @@ type Zone
     // V288: true, пока цена находится внутри зоны — ретест считается по фронту входа,
     // а не на каждом баре подряд.
     bool         inside_prev
+    // V291: подготовка к митигации. mit_armed — цена подтверждённо была ВНЕ зоны со
+    // стороны, с которой к ней подходят (сверху для support, снизу для resistance);
+    // mit_touched — после этого зона была реально протестирована. Без этих флагов
+    // зона, созданная «под ценой», помечалась митигированной на первом же баре.
+    bool         mit_armed
+    bool         mit_touched
     // V288: накопленные (уже применённые) штрафы — не дают повторно списывать score
     // на каждом баре. Хранят ПОЛНУЮ величину штрафа, применённую к зоне за всё время.
     float        bb_decay_applied     // доля (0..0.2) возрастного штрафа BB
@@ -1734,12 +1745,34 @@ method update(Zone this) =>
         // Ранее флаг ставился по внутрибарному фитилю на неподтверждённом баре и был
         // необратим: один шумовой прокол середины зоны навсегда исключал её из
         // f_merge_nested_zones()/f_resolve_zone_conflicts().
-        if not this.mitigated and barstate.isconfirmed
+        // V291: добавлены (а) arm/touch — митигация возможна только после того, как цена
+        // подтверждённо была вне зоны со «своей» стороны и затем вошла в неё, (б) cooldown
+        // от created_at, (в) разделение митигации и инвалидации: закрытие за ДАЛЬНЕЙ
+        // границей — это пробой зоны (active := false), а не «зона отработана».
+        if barstate.isconfirmed
             float zone_eq = (this.top + this.bot) / 2.0
-            if this.is_bull  and close <= zone_eq
-                this.mitigated := true
-            else if not this.is_bull and close >= zone_eq
-                this.mitigated := true
+            bool is_cooled = (bar_index - this.created_at) >= chopcount_int
+            // (а) arming: цена закрылась строго вне зоны со стороны подхода
+            if not this.mit_armed
+                if this.is_bull and close > this.top
+                    this.mit_armed := true
+                else if not this.is_bull and close < this.bot
+                    this.mit_armed := true
+            // touch: бар реально задел зону после arming
+            else if not this.mit_touched
+                bool touched = this.is_bull ? (low <= this.top and high >= this.bot) : (high >= this.bot and low <= this.top)
+                if touched
+                    this.mit_touched := true
+            // (в) инвалидация: закрытие за дальней границей зоны
+            bool invalidated = this.is_bull ? (close < this.bot) : (close > this.top)
+            if invalidated and this.mit_armed
+                this.active := false
+            else if not this.mitigated and this.mit_touched and is_cooled
+                // (б) митигация: закрытие за EQ, но всё ещё внутри зоны
+                if this.is_bull and close <= zone_eq
+                    this.mitigated := true
+                else if not this.is_bull and close >= zone_eq
+                    this.mitigated := true
 
         if not this.idm_swept and not na(this.idm_lvl) and not this.mitigated
             if this.is_bull and low <= this.idm_lvl
@@ -1946,6 +1979,10 @@ method trigger_bb(Zone this, bool strong_break, float break_z_score, bool do_exe
             this.is_bull := not this.is_bull
             this.z_type := "BB"
             this.mitigated := false
+            // V291: направление зоны инвертировано — сбрасываем arm/touch, иначе новая
+            // BB унаследует подготовку к митигации от прежней стороны.
+            this.mit_armed := false
+            this.mit_touched := false
             this.created_at := bar_index
             this.idm_swept := false
             this.sniper_price := zone_eq
@@ -3518,22 +3555,42 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
 
         // V279: Volume-weighted boundary refinement
         // When we have enough volume data, shift boundaries toward volume-weighted levels
+        // V291: бленд больше НЕ мутирует cluster_h/cluster_l. Раньше сглаженные значения
+        // использовались как база для расширения экстремумов (сырые high[]/low[]
+        // сравнивались со сглаженным уровнем) и как одна из финальных границ, тогда как
+        // вторая граница оставалась сырой — зона получалась смещённой, а не сужённой.
+        // Теперь сохраняем сырые экстремумы и величину сжатия отдельно.
+        float raw_h = cluster_h
+        float raw_l = cluster_l
+        float blend_h = cluster_h
+        float blend_l = cluster_l
         if vwap_vol_sum > 0 and candles_found >= 2
             float vw_h = vwap_h_sum / vwap_vol_sum
             float vw_l = vwap_l_sum / vwap_vol_sum
             // Blend 30% VWAP + 70% raw extremes for stability
-            cluster_h := cluster_h * 0.7 + vw_h * 0.3
-            cluster_l := cluster_l * 0.7 + vw_l * 0.3
+            blend_h := raw_h * 0.7 + vw_h * 0.3
+            blend_l := raw_l * 0.7 + vw_l * 0.3
             // Safety: ensure h >= l
-            if cluster_h < cluster_l
-                float _tmp = cluster_h
-                cluster_h := cluster_l
-                cluster_l := _tmp
+            if blend_h < blend_l
+                float _tmp = blend_h
+                blend_h := blend_l
+                blend_l := _tmp
+        // Сжатие каждой границы внутрь зоны (>= 0), применяется симметрично к обеим
+        // финальным границам — в том числе к той, что берётся из abs_extreme_*.
+        float shrink_h = math.max(0.0, raw_h - blend_h)
+        float shrink_l = math.max(0.0, blend_l - raw_l)
 
-        float abs_extreme_h   = cluster_h
-        float abs_extreme_l   = cluster_l
+        // V291: расширение стартует от СЫРЫХ экстремумов кластера
+        float abs_extreme_h   = raw_h
+        float abs_extreme_l   = raw_l
         int lookback_limit    = math.min(p_max_history - b_off - 1, bar_index - b_off - 1)
         lookback_limit := math.min(lookback_limit, math.max(30, (is_bull ? p_pivot_left : p_pivot_left_res) * 3))
+        // V291: расширение ограничено допуском в ATR (аналогично noise_tol), а не только
+        // числом баров — иначе граница уезжала к произвольному старому экстремуму и
+        // высота зоны сдерживалась только гейтом размера.
+        float ext_tol   = math.max(syminfo.mintick, hist_atr * p_cluster_tol)
+        float ext_h_cap = raw_h + ext_tol
+        float ext_l_cap = raw_l - ext_tol
 
         for m = 1 to lookback_limit
             int idx_m = b_off + m
@@ -3541,18 +3598,29 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                 break
             int safe_m = f_clamp(idx_m, MAX_OFFSET)
             if not is_bull
-                if close[safe_m] < cluster_l - (hist_atr * 0.1)
+                if close[safe_m] < raw_l - (hist_atr * 0.1)
+                    break
+                if high[safe_m] > ext_h_cap
+                    abs_extreme_h := ext_h_cap
                     break
                 if high[safe_m] > abs_extreme_h
                     abs_extreme_h := high[safe_m]
             else
-                if close[safe_m] > cluster_h + (hist_atr * 0.1)
+                if close[safe_m] > raw_h + (hist_atr * 0.1)
+                    break
+                if low[safe_m] < ext_l_cap
+                    abs_extreme_l := ext_l_cap
                     break
                 if low[safe_m] < abs_extreme_l
                     abs_extreme_l := low[safe_m]
 
-        float c_h = not is_bull ? abs_extreme_h : cluster_h
-        float c_l = is_bull ? abs_extreme_l : cluster_l
+        float c_h = not is_bull ? (abs_extreme_h - shrink_h) : blend_h
+        float c_l = is_bull ? (abs_extreme_l + shrink_l) : blend_l
+        // Safety: сжатие не должно вывернуть зону
+        if c_h < c_l
+            float _swap = c_h
+            c_h := c_l
+            c_l := _swap
 
         // IDM (inducement) уровень = swing-точка, образующая зону;
         // считается «sweept» когда цена делает фитиль за этот уровень (см. update() в Zone),
@@ -3789,7 +3857,7 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
 
                 float zone_h      = math.abs(c_h - c_l)
                 float atr_now     = hist_atr
-                bool zone_size_ok = (atr_now > 0) ? (zone_h >= atr_now * 0.1 and zone_h <= atr_now * 8.0) : true
+                bool zone_size_ok = (atr_now > 0) ? (zone_h >= atr_now * 0.1 and zone_h <= atr_now * OB_MAX_ATR_MULT) : true
 
                 if not zone_size_ok
                     fd := false
@@ -4347,6 +4415,7 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         regime_at_creation=0, inst_footprint=0.0,
         initial_score=sc, retest_count=0,
         age_credit=0.0, inside_prev=false,
+        mit_armed=false, mit_touched=false,
         bb_decay_applied=0.0, fvg_penalty_applied=0.0,
         poc_bonus_applied=false, fvg_conf_applied=false,
         side_stripe=na)
