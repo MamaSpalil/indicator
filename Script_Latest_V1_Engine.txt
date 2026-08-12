@@ -69,6 +69,11 @@ float MIN_SCORE_MBR = 45.0   // Multi-bar rejection: minimum 3 candles
 // растянутых на весь диапазон окна расчёта дельты (и от разрастания при слиянии).
 float IMB_MAX_ATR_MULT = 1.5
 
+// V290: предельная высота (в ATR) результата слияния зон любого типа кроме IMB.
+// Цепочка слияний по 70%-перекрытию наращивала геометрию монотонно; по SMC зона
+// интереса выше ~2 ATR перестаёт быть зоной и становится диапазоном.
+float MERGE_MAX_ATR_MULT = 2.0
+
 // Универсальный clamp: гарантирует что offset в [0, ceil]
 f_clamp(int val, int ceil) => math.max(0, math.min(val, ceil))
 
@@ -1447,6 +1452,10 @@ type Zone
     // на каждом баре. Хранят ПОЛНУЮ величину штрафа, применённую к зоне за всё время.
     float        bb_decay_applied     // доля (0..0.2) возрастного штрафа BB
     float        fvg_penalty_applied  // абсолютные пункты (0..25) штрафа за заполнение FVG
+    // V290: одноразовые бонусы — раньше начислялись на КАЖДОМ баре и за ~10 баров
+    // выводили score любой зоны на потолок 150, обесценивая градацию tier.
+    bool         poc_bonus_applied    // бонус за близость к POC уже начислен
+    bool         fvg_conf_applied     // бонус конфлюэнса с соседней FVG-зоной уже начислен
     // V281: Side-stripe line for support/resistance visual distinction
     line         side_stripe       // Colored stripe: bottom for support (green), top for resistance (red)
 
@@ -2405,10 +2414,19 @@ f_detect_imbalance() =>
     float mean_d = delta_sum / stats_n
     float var_d = delta_sq_sum / stats_n - mean_d * mean_d
     float std_d = math.sqrt(math.max(var_d, 0.0001))
-    bool is_extreme = math.abs(curr_delta) > inp_imb_delta_threshold * std_d
-    bool is_bullish_imb = curr_delta > 0 and is_extreme
-    bool is_bearish_imb = curr_delta < 0 and is_extreme
-    float imb_score = is_extreme ? math.min(100.0, 50.0 + math.abs(curr_delta) / std_d * 10.0) : 0.0
+    // V290-fix: размерностное несоответствие. `curr_delta` — СУММА дельт по `lb` барам
+    // (масштабируется как lb), а std_d считалась по ОДНОБАРОВЫМ дельтам. Порог
+    // `threshold * std_d` пробивался почти всегда при lb > 3, поэтому is_extreme был
+    // постоянно true, imb_score упирался в 100 и IMB-зоны спамились.
+    // Приводим статистику к тому же окну: std суммы lb дельт ≈ std_d*sqrt(lb),
+    // а её мат. ожидание = mean_d*lb (убираем систематический дрейф).
+    float lb_n     = float(math.max(lb, 1))
+    float std_win  = math.max(std_d * math.sqrt(lb_n), 0.0001)
+    float delta_z  = (curr_delta - mean_d * lb_n) / std_win
+    bool is_extreme = math.abs(delta_z) > inp_imb_delta_threshold
+    bool is_bullish_imb = delta_z > 0 and is_extreme
+    bool is_bearish_imb = delta_z < 0 and is_extreme
+    float imb_score = is_extreme ? math.min(100.0, 50.0 + math.abs(delta_z) * 10.0) : 0.0
     [is_extreme, is_bullish_imb, imb_score, curr_delta]
 
 // V279: Accumulation/Distribution Zone detection (Wyckoff)
@@ -2472,6 +2490,11 @@ f_detect_multi_bar_rejection(bool is_bull, int lookback) =>
     float tol = curr_atr * 0.15
     int rej_count = 0
     float total_wick = 0.0
+    // V290-fix: дальняя граница зоны MBR. Ранее зона строилась от ref_level до текущего
+    // `close`, то есть её высота зависела от случайного положения цены на баре создания.
+    // Теперь границей служит край тел свечей отказа (вершина области фитилей) —
+    // это и есть та цена, от которой рынок фактически отбивался.
+    float rej_edge = na
     for i = 0 to math.min(lookback - 1, MAX_OFFSET)
         int si = f_clamp(i, MAX_OFFSET)
         float rng = high[si] - low[si]
@@ -2481,14 +2504,18 @@ f_detect_multi_bar_rejection(bool is_bull, int lookback) =>
                 if math.abs(low[si] - ref_level) < tol and lower_wick > rng * 0.3
                     rej_count += 1
                     total_wick += lower_wick
+                    float _edge = math.min(open[si], close[si])
+                    rej_edge := na(rej_edge) ? _edge : math.max(rej_edge, _edge)
             else
                 float upper_wick = high[si] - math.max(open[si], close[si])
                 if math.abs(high[si] - ref_level) < tol and upper_wick > rng * 0.3
                     rej_count += 1
                     total_wick += upper_wick
+                    float _edge = math.max(open[si], close[si])
+                    rej_edge := na(rej_edge) ? _edge : math.min(rej_edge, _edge)
     bool valid = rej_count >= inp_multi_rej_min
     float mbr_score = valid ? math.min(100.0, 30.0 + float(rej_count) * 10.0 + total_wick / curr_atr * 5.0) : 0.0
-    [valid, rej_count, mbr_score, ref_level]
+    [valid, rej_count, mbr_score, ref_level, rej_edge]
 
 // V279: Enhanced neural network (2 hidden layers: 9→8→4→1) for score prediction
 // 9 inputs: z_score, volume, trend, sweep, efficiency, pa_patterns, regime, session, hurst
@@ -2734,7 +2761,16 @@ f_calc_fvg_on_candle(int impulse_idx, bool is_bull, float current_atr) =>
         float tol  = syminfo.mintick * 0.5
 
         if is_bull
-            if c3_l >= (c1_h + tol)
+            // V290-fix: ветка "Marubozu" была недостижима — её первое условие
+            // (c3_l >= c1_h + tol) идентично условию Classic FVG выше, и else-if
+            // никогда до неё не доходил. Переносим её ПЕРЕД Classic: это более
+            // строгий (и более качественный по SMC) частный случай того же гэпа.
+            if c3_l >= (c1_h + tol) and (c2_o <= c2_l + atr_dampened * 0.1) and (c2_c >= c2_h - atr_dampened * 0.1)
+                gap_size := (c3_l - c1_h) / atr_dampened
+                t := c3_l
+                b := c1_h
+                g_type := "Marubozu"
+            else if c3_l >= (c1_h + tol)
                 gap_size := (c3_l - c1_h) / atr_dampened
                 t := c3_l
                 b := c1_h
@@ -2749,19 +2785,22 @@ f_calc_fvg_on_candle(int impulse_idx, bool is_bull, float current_atr) =>
                 t := c3_o
                 b := c2_c
                 g_type := "Vol Imbalance"
-            else if c3_l >= (c1_h + tol) and (c2_o <= c2_l + atr_dampened * 0.1) and (c2_c >= c2_h - atr_dampened * 0.1)
-                gap_size := (c3_l - c1_h) / atr_dampened
-                t := c3_l
-                b := c1_h
-                g_type := "Marubozu"
-            else if c2_o >= (c1_o + tol) and c2_l > c1_h
-                // V287.5-fix: возвращаем реальные границы гэпа (c1_h → c2_l), а не open-open
+            else if c2_l > (c1_h + tol)
+                // V290-fix: условие гейта было по open-open (c2_o >= c1_o), что не имеет
+                // отношения к возвращаемому гэпу (c1_h → c2_l): валидные гэпы отбрасывались,
+                // а невалидные проходили при случайном совпадении открытий.
                 gap_size := (c2_l - c1_h) / atr_dampened
                 t := c2_l
                 b := c1_h
                 g_type := "Open-Open Imb"
         else
-            if c1_l >= (c3_h + tol)
+            // V290-fix: аналогично — Marubozu перед Classic
+            if c1_l >= (c3_h + tol) and (c2_o >= c2_h - atr_dampened * 0.1) and (c2_c <= c2_l + atr_dampened * 0.1)
+                gap_size := (c1_l - c3_h) / atr_dampened
+                t := c1_l
+                b := c3_h
+                g_type := "Marubozu"
+            else if c1_l >= (c3_h + tol)
                 gap_size := (c1_l - c3_h) / atr_dampened
                 t := c1_l
                 b := c3_h
@@ -2776,13 +2815,8 @@ f_calc_fvg_on_candle(int impulse_idx, bool is_bull, float current_atr) =>
                 t := c2_c
                 b := c3_o
                 g_type := "Vol Imbalance"
-            else if c1_l >= (c3_h + tol) and (c2_o >= c2_h - atr_dampened * 0.1) and (c2_c <= c2_l + atr_dampened * 0.1)
-                gap_size := (c1_l - c3_h) / atr_dampened
-                t := c1_l
-                b := c3_h
-                g_type := "Marubozu"
-            else if c1_o >= (c2_o + tol) and c2_h < c1_l
-                // V287.5-fix: возвращаем реальные границы медвежьего гэпа (c1_l → c2_h)
+            else if c2_h < (c1_l - tol)
+                // V290-fix: гейт по реальному гэпу (c2_h → c1_l), а не по open-open
                 gap_size := (c1_l - c2_h) / atr_dampened
                 t := c1_l
                 b := c2_h
@@ -3857,7 +3891,14 @@ f_calc_zone_validity(Zone z) =>
     float dist = na(z.bot) or na(z.top) or na(close) ? na :
                  z.is_bull ? f_safe_div(z.bot - close, atr_val) : f_safe_div(close - z.top, atr_val)
     float inv_limit = z.is_bull ? p_inv_dist : p_inv_dist_res
-    bool far   = not na(dist) and (dist > inv_limit)
+    // V290-fix: инвалидация по расстоянию была односторонней. Для бычьей зоны `dist`
+    // считался как (bot - close): если цена ушла ВВЕРХ от зоны, dist отрицателен и
+    // зона не инвалидировалась никогда, сколько бы ATR её ни отделяло. Добавляем
+    // симметричную проверку по модулю расстояния до ближайшей границы зоны.
+    float away = na(z.bot) or na(z.top) or na(close) ? na :
+                 close > z.top ? f_safe_div(close - z.top, atr_val) :
+                 close < z.bot ? f_safe_div(z.bot - close, atr_val) : 0.0
+    bool far   = (not na(dist) and (dist > inv_limit)) or (not na(away) and (away > inv_limit))
     [dist, far]
 
 f_update_sfp(Zone z) =>
@@ -3945,6 +3986,12 @@ f_process_critical_changes(Zone z, bool is_closed, float prev_low, float prev_hi
             bool closed_inside = (close <= z.top and close >= z.bot)
             if closed_inside
                 z.chop_count += 1
+                // V290-fix: сброс «залипшего» pending_break. Ранее после бара, закрывшегося
+                // за зоной (pending_break := true), возврат цены ВНУТРЬ зоны попадал в эту
+                // ветку и флаг оставался взведённым навсегда. Любой следующий одиночный
+                // пробой сразу давал real_breakout, обнуляя двухбарное подтверждение,
+                // а `broke_cond := false` при pending_break запрещал зоне истекать по возрасту.
+                z.pending_break := false
 
         float squeeze_tol = atr_val * p_squeeze_tol
         if z.is_bull
@@ -4044,9 +4091,14 @@ f_merge_nested_zones() =>
                     // V289-fix: слияние IMB-зон объединяет геометрию (union top/bot) и при
                     // цепочке слияний давало гигантскую зону. Запрещаем слияние, если
                     // результирующая высота превышает лимит высоты IMB-зоны.
-                    if is_contained and imb_compat
-                        float u_h = math.max(z1.top, z2.top) - math.min(z1.bot, z2.bot)
-                        if u_h > math.max(syminfo.mintick * 10, nz(atr_val, 0.0) * IMB_MAX_ATR_MULT)
+                    // V290-fix: тот же дефект был у ВСЕХ остальных типов (OB/RZ/BB/MBR) —
+                    // лимит стоял только для IMB, поэтому цепочка слияний по 70%-перекрытию
+                    // наращивала зону монотонно и превращала её в «диапазон на пол-экрана».
+                    if is_contained
+                        float u_h   = math.max(z1.top, z2.top) - math.min(z1.bot, z2.bot)
+                        float h_cap = imb_compat ? math.max(syminfo.mintick * 10, nz(atr_val, 0.0) * IMB_MAX_ATR_MULT)
+                                                 : math.max(syminfo.mintick * 10, nz(atr_val, 0.0) * MERGE_MAX_ATR_MULT)
+                        if u_h > h_cap
                             is_contained := false
                     if is_contained
                         // V288: master выбирается по эффективному score, а не по вложенности.
@@ -4119,11 +4171,16 @@ f_resolve_zone_conflicts() =>
                 if same_dir and zi.z_type == "OB" and zj.z_type == "OB"
                     bool zi_has_fvg = zi.fvg_type != "None" and zi.fvg_type != ""
                     bool zj_has_fvg = zj.fvg_type != "None" and zj.fvg_type != ""
-                    if zi_has_fvg and not zj_has_fvg
+                    // V290-fix: бонус конфлюэнса — одноразовый. Ранее он начислялся на
+                    // каждом подтверждённом баре, пока зоны перекрывались, и обе зоны
+                    // гарантированно уходили в потолок 150 за считанные бары.
+                    if zi_has_fvg and not zj_has_fvg and not zj.fvg_conf_applied
                         zj.score := math.min(zj.score + zi.score * 0.3, 150.0)
+                        zj.fvg_conf_applied := true
                         zj.tier := f_tier(zj.score)
-                    else if zj_has_fvg and not zi_has_fvg
+                    else if zj_has_fvg and not zi_has_fvg and not zi.fvg_conf_applied
                         zi.score := math.min(zi.score + zj.score * 0.3, 150.0)
+                        zi.fvg_conf_applied := true
                         zi.tier := f_tier(zi.score)
         // Очищаем неактивные зоны после разрешения конфликтов
         for i = array.size(zone_db) - 1 to 0
@@ -4291,6 +4348,7 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         initial_score=sc, retest_count=0,
         age_credit=0.0, inside_prev=false,
         bb_decay_applied=0.0, fvg_penalty_applied=0.0,
+        poc_bonus_applied=false, fvg_conf_applied=false,
         side_stripe=na)
     n
 
@@ -4323,8 +4381,8 @@ f_create_new_zones() =>
     // V279-fix: pre-compute ta-dependent zone detectors outside conditionals for per-bar consistency
     [_pre_acc_range, _pre_is_acc, _pre_is_dist, _pre_acc_h, _pre_acc_l, _pre_acc_score] = f_detect_accumulation_distribution()
     [_pre_vcp_valid, _pre_vcp_score, _pre_vcp_h, _pre_vcp_l, _pre_vcp_squeeze] = f_detect_vcp_zone()
-    [_pre_mbr_b_valid, _pre_mbr_b_count, _pre_mbr_b_score, _pre_mbr_b_level] = f_detect_multi_bar_rejection(true, 8)
-    [_pre_mbr_s_valid, _pre_mbr_s_count, _pre_mbr_s_score, _pre_mbr_s_level] = f_detect_multi_bar_rejection(false, 8)
+    [_pre_mbr_b_valid, _pre_mbr_b_count, _pre_mbr_b_score, _pre_mbr_b_level, _pre_mbr_b_edge] = f_detect_multi_bar_rejection(true, 8)
+    [_pre_mbr_s_valid, _pre_mbr_s_count, _pre_mbr_s_score, _pre_mbr_s_level, _pre_mbr_s_edge] = f_detect_multi_bar_rejection(false, 8)
     
     bool allow        = (not use_adx or not global_flat)
     bool confirmed_bar = barstate.isconfirmed
@@ -4742,10 +4800,20 @@ f_create_new_zones() =>
             [_imb_valid, _imb_bull, _imb_score, _imb_delta] = f_detect_imbalance()
             if _imb_valid and _imb_score >= math.max(float(p_min_score) * 0.6, MIN_SCORE_IMB)
                 // Check for duplicates within last 10 bars
+                // V290-fix: дубликат определялся ТОЛЬКО по возрасту (<10 баров) без учёта
+                // цены — две IMB-зоны на разных уровнях, созданные с интервалом ≥10 баров,
+                // обе появлялись и затем сливались, обходя лимит высоты. Проверяем ещё и
+                // близость по цене, а также выходим из цикла при первом совпадении.
+                float _imb_ref = close
+                float _imb_tol = math.max(syminfo.mintick * 10, nz(atr_val, 0.0) * IMB_MAX_ATR_MULT)
                 bool imb_dup = false
                 for z in zone_db
-                    if z.z_type == "IMB" and z.active and (bar_index - z.created_at) < 10
-                        imb_dup := true
+                    if z.z_type == "IMB" and z.active
+                        bool _near_time  = (bar_index - z.created_at) < 10
+                        bool _near_price = math.abs((z.top + z.bot) / 2.0 - _imb_ref) < _imb_tol
+                        if _near_time and _near_price
+                            imb_dup := true
+                            break
                 if not imb_dup
                     // V287.5-fix: зона имбаланса покрывает диапазон цен за окно расчёта дельты
                     // (раньше использовались single-bar high/low, что не отражало семантику IMB).
@@ -4781,7 +4849,12 @@ f_create_new_zones() =>
 
         // ── V279/V287: Accumulation/Distribution Zones (with absolute MIN_SCORE_ACC) ─
         if confirmed_bar and in_window and use_acc_zones
-            if _pre_acc_range and _pre_acc_score >= math.max(float(p_min_score) * 0.5, MIN_SCORE_ACC)
+            // V290-fix: гейт создания требовал только факта узкого диапазона (_pre_acc_range).
+            // Затухание ATR и знак CVD влияли лишь на ИМЯ зоны, поэтому любой флэт с
+            // растущей волатильностью создавал зону, а при cvd_sum == 0 она помечалась
+            // как DST/bear произвольно. Требуем полноценный Wyckoff-сетап.
+            bool _acc_setup = _pre_acc_range and (_pre_is_acc or _pre_is_dist)
+            if _acc_setup and _pre_acc_score >= math.max(float(p_min_score) * 0.5, MIN_SCORE_ACC)
                 bool acc_dup = false
                 for z in zone_db
                     if (z.z_type == "ACC" or z.z_type == "DST") and z.active and (bar_index - z.created_at) < inp_acc_min_bars
@@ -4808,12 +4881,15 @@ f_create_new_zones() =>
                 if not vcp_dup
                     string vcp_tier = f_tier(_pre_vcp_score)
                     string vcp_info = _pre_vcp_squeeze ? "Sqz+VCP" : "VCP"
+                    // V290-fix: направление VCP-зоны бралось жёстко как is_bull=true, поэтому
+                    // VCP всегда попадала в слот поддержки при экспорте и не могла быть
+                    // сопротивлением. VCP направления не имеет — берём контекст HTF-тренда.
                     box bx_vcp = box.new(bar_index - 10, _pre_vcp_h, bar_index + 5, _pre_vcp_l,
                          border_color = color.new(c_vcp_base, 0),
                          bgcolor = f_zone_bg(c_vcp_base, f_score_to_transp(_pre_vcp_score)),
                          border_style = line.style_dashed,
                          xloc = xloc.bar_index)
-                    Zone vcp_z = f_make_zone(bar_index, _pre_vcp_h, _pre_vcp_l, true, "VCP", _pre_vcp_score, vcp_tier, na, (_pre_vcp_h + _pre_vcp_l) / 2.0, bx_vcp, na, "None", vcp_info + " Score=" + str.tostring(_pre_vcp_score, "#.0"), vcp_info)
+                    Zone vcp_z = f_make_zone(bar_index, _pre_vcp_h, _pre_vcp_l, global_bull, "VCP", _pre_vcp_score, vcp_tier, na, (_pre_vcp_h + _pre_vcp_l) / 2.0, bx_vcp, na, "None", vcp_info + " Score=" + str.tostring(_pre_vcp_score, "#.0"), vcp_info)
                     array.push(zone_db, vcp_z)
 
         // ── V279/V287: Multi-Bar Rejection (with absolute MIN_SCORE_MBR) ──
@@ -4825,7 +4901,8 @@ f_create_new_zones() =>
                     if z.z_type == "MBR" and z.is_bull and z.active and math.abs(z.bot - _pre_mbr_b_level) < nz(atr_val, 1.0) * 0.3
                         mbr_b_dup := true
                 if not mbr_b_dup
-                    float mbr_b_top = close
+                    // V290-fix: верхняя граница — край тел свечей отказа, а не текущий close
+                    float mbr_b_top = nz(_pre_mbr_b_edge, close)
                     float mbr_b_bot = _pre_mbr_b_level
                     // V287.5-fix: гарантируем top > bot, иначе box рисуется перевёрнутым
                     if mbr_b_top < mbr_b_bot
@@ -4849,8 +4926,9 @@ f_create_new_zones() =>
                     if z.z_type == "MBR" and not z.is_bull and z.active and math.abs(z.top - _pre_mbr_s_level) < nz(atr_val, 1.0) * 0.3
                         mbr_s_dup := true
                 if not mbr_s_dup
+                    // V290-fix: нижняя граница — край тел свечей отказа, а не текущий close
                     float mbr_s_top = _pre_mbr_s_level
-                    float mbr_s_bot = close
+                    float mbr_s_bot = nz(_pre_mbr_s_edge, close)
                     // V287.5-fix: гарантируем top > bot
                     if mbr_s_top < mbr_s_bot
                         float _t = mbr_s_top
@@ -4947,7 +5025,12 @@ f_mng() =>
                             z.retest_count := nz(z.retest_count, 0) + 1
                             // Кредит 30% текущего эффективного возраста (убывающая отдача)
                             float credit_share = 0.3 * math.max(0.0, 1.0 - 0.25 * math.min(z.retest_count - 1, 3))
-                            z.age_credit := nz(z.age_credit, 0.0) + age_bars * credit_share
+                            // V290-fix: age_credit накапливался без верхней границы, а
+                            // _eff_age зажат снизу нулём — часто ретестируемая зона
+                            // становилась бессмертной (decay_factor = 1.0 навсегда).
+                            // Ограничиваем кредит 80% фактического возраста зоны.
+                            float _age_cap = 0.8 * math.max(0.0, float(bar_index - z.created_at))
+                            z.age_credit := math.min(nz(z.age_credit, 0.0) + age_bars * credit_share, _age_cap)
                         z.inside_prev := held_retest
                 // V270: FVG fill tracking
                 if not na(z.fvg_gfx) and z.active
@@ -5562,8 +5645,12 @@ if not na(_poc_price) and array.size(zone_db) > 0
     for z in zone_db
         if z.active
             float _zmid = (z.top + z.bot) / 2.0
-            if math.abs(_zmid - _poc_price) < _poc_tol
+            // V290-fix: бонус начисляется ОДИН раз на зону. Ранее +15 добавлялись на
+            // каждом баре, пока середина зоны находилась рядом с POC, — за ~10 баров
+            // любая такая зона упиралась в потолок 150 независимо от её качества.
+            if math.abs(_zmid - _poc_price) < _poc_tol and not z.poc_bonus_applied
                 z.score := math.min(z.score + 15.0, 150.0)
+                z.poc_bonus_applied := true
                 z.tier := f_tier(z.score)
 
 // V270/V287: Top zone tracking for VISUAL export
