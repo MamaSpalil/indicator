@@ -3988,6 +3988,12 @@ f_garbage_collection(array<Zone> to_keep) =>
                 f_delete_zone_graphics(z)
                 array.remove(zone_db, i)
 
+// V288: единая мера ранжирования зон — score с учётом временно́го затухания.
+// Используется и при отборе видимых зон, и при экспорте, чтобы ENGINE и VISUAL
+// показывали один и тот же набор зон.
+f_effective_score(Zone z) =>
+    z.score * nz(z.decay_factor, 1.0)
+
 f_merge_nested_zones() =>
     int sz = array.size(zone_db)
     if sz > 1
@@ -4019,16 +4025,22 @@ f_merge_nested_zones() =>
                     bool high_overlap = min_sz > 0 and (ov_sz / min_sz >= 0.7)
                     bool is_contained = z2_inside_z1 or z1_inside_z2 or high_overlap
                     if is_contained
-                        Zone outer_z = z1_inside_z2 ? z2 : z1
-                        Zone inner_z = z1_inside_z2 ? z1 : z2
-                        Zone master  = outer_z
-                        Zone slave   = inner_z
+                        // V288: master выбирается по эффективному score, а не по вложенности.
+                        // Ранее при high_overlap (перекрытие без вложенности) master всегда
+                        // становилась z1 (более новая), и слабая зона поглощала сильную.
+                        bool z1_stronger = f_effective_score(z1) >= f_effective_score(z2)
+                        Zone master  = z1_stronger ? z1 : z2
+                        Zone slave   = z1_stronger ? z2 : z1
+                        bool ob_rz_absorb_local = ob_rz_absorb
 
-                        float conf_mult  = master.z_type == "BB" ? 0.35 : (ob_rz_absorb ? 0.15 : (slave.z_type == "RZ" ? 0.30 : 0.25))
+                        float conf_mult  = master.z_type == "BB" ? 0.35 : (ob_rz_absorb_local ? 0.15 : (slave.z_type == "RZ" ? 0.30 : 0.25))
                         float conf_bonus = slave.score * conf_mult
                         master.score := math.min(master.score + conf_bonus, 150.0)
                         master.absorbed_count := master.absorbed_count + 1
                         master.tier := f_tier(master.score)
+                        // V288: объединяем геометрию — иначе поглощённый диапазон ликвидности терялся
+                        master.top := math.max(master.top, slave.top)
+                        master.bot := math.min(master.bot, slave.bot)
 
                         if master.z_type == "BB"
                             master.sniper_price := (master.top + master.bot) / 2.0
@@ -4041,7 +4053,10 @@ f_merge_nested_zones() =>
                         f_delete_zone_graphics(slave)
                         master.update()
 
-                        if slave.origin_idx == z1.origin_idx
+                        if not z1_stronger
+                            // V288: z1 поглощена — выходим из внутреннего цикла.
+                            // Раньше сравнивались origin_idx, но у OB и RZ с одного пивота
+                            // они совпадают, что давало ложные срабатывания break.
                             break
 
 // ── V250: Разрешение конфликтов между зонами ──────────────────────────────
@@ -4086,6 +4101,10 @@ f_resolve_zone_conflicts() =>
         for i = array.size(zone_db) - 1 to 0
             Zone z = array.get(zone_db, i)
             if not z.active and z.mitigated
+                // V288: обязательное удаление графики — зоны, деактивированные вне этой
+                // функции, удалялись из массива вместе с «висящими» box/line/label,
+                // что приводило к утечке объектов до лимита TradingView (500).
+                f_delete_zone_graphics(z)
                 array.remove(zone_db, i)
 
 // V278: Pre-GC zone counts — computed before garbage collection for accurate dashboard display
@@ -4125,7 +4144,10 @@ f_limit_visible_zones() =>
         if array.size(candidates) > 0
             float[] scores  = array.new_float()
             for z in candidates
-                array.push(scores, z.score)
+                // V288: ранжируем по эффективному score (score × decay_factor) — той же мере,
+                // что используется при экспорте зон в VISUAL. Раньше ENGINE отбирал зоны по
+                // сырому score, из-за чего на графике и в VISUAL выживали разные зоны.
+                array.push(scores, f_effective_score(z))
             int[] sorted_indices = array.sort_indices(scores, order.descending)
             array<Zone> to_keep  = array.new<Zone>()
 
@@ -4135,8 +4157,13 @@ f_limit_visible_zones() =>
             int _reserved   = 10  // Reserve slots for Previous Day (PD) band lines/boxes (3 lines + 2 boxes) + misc
             int _avail      = 500 - _reserved
             int _boxes_pz   = show_fvg ? 2 : 1
-            int _lines_pz   = (use_fib_grid ? 8 : 0) + (use_glow_best ? 2 : 0) + (use_health_bar ? 1 : 0) + (use_fvg_connector ? 1 : 0) + 1  // V282: +1 for side_stripe (V281)
-            int _labels_pz  = (use_fib_grid ? 7 : 0) + (show_sniper ? 1 : 0) + (use_bb_arrow ? 1 : 0)
+            // V288: учитываем зигзаг-границу RZ (до 8 линий на зону) — раньше она не
+            // входила в расчёт, и при включённых RZ+Fib+Glow реальный расход линий
+            // превышал лимит TradingView, из-за чего объекты молча обрезались.
+            int _rz_lines   = (use_rz and use_rz_zigzag) ? 8 : 0
+            int _lines_pz   = (use_fib_grid ? 8 : 0) + (use_glow_best ? 2 : 0) + (use_health_bar ? 1 : 0) + (use_fvg_connector ? 1 : 0) + _rz_lines + 1  // V282: +1 for side_stripe (V281)
+            // V288: debug-метка (debug_mode) также расходует слот label на зону
+            int _labels_pz  = (use_fib_grid ? 7 : 0) + (show_sniper ? 1 : 0) + (use_bb_arrow ? 1 : 0) + (debug_mode ? 1 : 0)
             int _lim_box    = _boxes_pz  > 0 ? math.floor(_avail / _boxes_pz)  : _avail
             int _lim_line   = _lines_pz  > 0 ? math.floor(_avail / _lines_pz)  : _avail
             int _lim_label  = _labels_pz > 0 ? math.floor(_avail / _labels_pz) : _avail
@@ -5499,7 +5526,7 @@ if array.size(zone_db) > 0
     float _best_effective = -1.0
     for z in zone_db
         if z.active
-            float _eff_score = z.score * nz(z.decay_factor, 1.0)
+            float _eff_score = f_effective_score(z)
             if _eff_score > _best_effective
                 _best_effective := _eff_score
                 _top1_zone_score := z.score             // raw score for display
@@ -5546,12 +5573,16 @@ if array.size(zone_db) > 0
         // Skip BB zones (Breaker Blocks have their own visual style)
         if z.z_type == "BB"
             continue
+        // V288: митигированные зоны (цена закрылась за EQ) больше не считаются
+        // валидными S/R и не экспортируются в VISUAL наравне со свежими
+        if z.mitigated
+            continue
         float _zmid = (z.top + z.bot) / 2.0
         float _zdist = math.abs(close - _zmid)
         // V287: priority = score × decay × proximity_weight
         // proximity_weight = exp(-dist / (3 × ATR)): full weight at touch, 5% at 9 ATR
         float _proximity = math.exp(-_zdist / (3.0 * _atr_safe))
-        float _zpriority = z.score * nz(z.decay_factor, 1.0) * _proximity
+        float _zpriority = f_effective_score(z) * _proximity
         if z.is_bull  // Support side
             if _zpriority > _best_sup1_pri
                 // shift Top1 → Top2
