@@ -65,6 +65,10 @@ float MIN_SCORE_ACC = 50.0   // Accumulation: requires clear structure
 float MIN_SCORE_VCP = 45.0   // VCP: requires 3 contracting ranges
 float MIN_SCORE_MBR = 45.0   // Multi-bar rejection: minimum 3 candles
 
+// V289: максимальная высота Imbalance-зоны в ATR — защита от «гигантских» зон,
+// растянутых на весь диапазон окна расчёта дельты (и от разрастания при слиянии).
+float IMB_MAX_ATR_MULT = 1.5
+
 // Универсальный clamp: гарантирует что offset в [0, ceil]
 f_clamp(int val, int ceil) => math.max(0, math.min(val, ceil))
 
@@ -4037,6 +4041,13 @@ f_merge_nested_zones() =>
                     float min_sz = math.min(z1.top - z1.bot, z2.top - z2.bot)
                     bool high_overlap = min_sz > 0 and (ov_sz / min_sz >= 0.7)
                     bool is_contained = z2_inside_z1 or z1_inside_z2 or high_overlap
+                    // V289-fix: слияние IMB-зон объединяет геометрию (union top/bot) и при
+                    // цепочке слияний давало гигантскую зону. Запрещаем слияние, если
+                    // результирующая высота превышает лимит высоты IMB-зоны.
+                    if is_contained and imb_compat
+                        float u_h = math.max(z1.top, z2.top) - math.min(z1.bot, z2.bot)
+                        if u_h > math.max(syminfo.mintick * 10, nz(atr_val, 0.0) * IMB_MAX_ATR_MULT)
+                            is_contained := false
                     if is_contained
                         // V288: master выбирается по эффективному score, а не по вложенности.
                         // Ранее при high_overlap (перекрытие без вложенности) master всегда
@@ -4739,14 +4750,25 @@ f_create_new_zones() =>
                     // V287.5-fix: зона имбаланса покрывает диапазон цен за окно расчёта дельты
                     // (раньше использовались single-bar high/low, что не отражало семантику IMB).
                     int imb_win = math.max(2, math.min(inp_imb_lookback, MAX_OFFSET))
-                    float imb_h = ta.highest(high, imb_win)
-                    float imb_l = ta.lowest(low,  imb_win)
+                    // V289-fix: границы зоны строятся по телам свечей окна, а не по экстремумам
+                    // с фитилями — иначе один бар с длинной тенью растягивал зону на весь диапазон.
+                    float imb_h = ta.highest(math.max(open, close), imb_win)
+                    float imb_l = ta.lowest(math.min(open, close),  imb_win)
                     // Edge case: на первых барах ta.highest/lowest могут совпасть — расширяем до
                     // минимально-валидной ширины 0.5×ATR вокруг текущей цены, чтобы box не был вырожденным
                     if na(imb_h) or na(imb_l) or imb_h <= imb_l
                         float _half = math.max(syminfo.mintick, nz(atr_val, 0.0) * 0.25)
                         imb_h := close + _half
                         imb_l := close - _half
+                    // V289-fix: жёсткое ограничение высоты зоны. Ранее при волатильном окне
+                    // зона занимала весь диапазон и «захватывала» слишком много баров по цене.
+                    // Для бычьего IMB сохраняем нижнюю границу (спрос), для медвежьего — верхнюю (предложение).
+                    float imb_max_h = math.max(syminfo.mintick * 10, nz(atr_val, 0.0) * IMB_MAX_ATR_MULT)
+                    if (imb_h - imb_l) > imb_max_h
+                        if _imb_bull
+                            imb_h := imb_l + imb_max_h
+                        else
+                            imb_l := imb_h - imb_max_h
                     string imb_tier = f_tier(_imb_score)
                     color imb_col = c_imb_base
                     box bx_imb = box.new(bar_index - imb_win + 1, imb_h, bar_index + 5, imb_l,
