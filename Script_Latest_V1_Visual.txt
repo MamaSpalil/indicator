@@ -1668,7 +1668,11 @@ var line _vis_glow_res1_b = na
 var line _vis_glow_res2_t = na
 var line _vis_glow_res2_b = na
 
-if show_zones_v and use_engine_data
+// V288: рендер зон только на последнем баре (и на каждом realtime-тике).
+// Ранее блок отрабатывал на КАЖДОМ историческом баре, каждый раз удаляя и заново
+// создавая 4 бокса + 4 glow-линии. Итоговая картинка определяется только последним
+// проходом, поэтому вся работа на истории была холостой.
+if show_zones_v and use_engine_data and barstate.islast
     // Delete previous frame's boxes
     if not na(_vis_z_sup1)
         box.delete(_vis_z_sup1)

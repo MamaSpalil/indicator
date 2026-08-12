@@ -3416,6 +3416,12 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                             // После исчерпания noise-бюджета любая встречная свеча должна
                             // прекращать кластер.
                             break
+                        // V288: noise_tol наконец задействован. Ранее переменная вычислялась,
+                        // но нигде не читалась: встречная свеча любого размера раздвигала зону
+                        // на весь свой диапазон. Теперь noise-свеча поглощается, только если
+                        // выходит за текущие границы кластера не более чем на noise_tol.
+                        else if (h - cluster_h) > noise_tol or (cluster_l - l) > noise_tol
+                            break
                         else
                             noise_count += 1
                             candles_found += 1
@@ -3450,6 +3456,9 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                         if noise_count >= inp_noise_tolerance
                             // V287.5-fix: см. bull-ветку выше — после исчерпания noise-бюджета
                             // прекращаем расширение кластера, чтобы зона не «расползлась».
+                            break
+                        // V288: см. bull-ветку — noise-свеча принимается только в пределах noise_tol
+                        else if (h - cluster_h) > noise_tol or (cluster_l - l) > noise_tol
                             break
                         else
                             noise_count += 1
@@ -4031,9 +4040,8 @@ f_merge_nested_zones() =>
                         bool z1_stronger = f_effective_score(z1) >= f_effective_score(z2)
                         Zone master  = z1_stronger ? z1 : z2
                         Zone slave   = z1_stronger ? z2 : z1
-                        bool ob_rz_absorb_local = ob_rz_absorb
 
-                        float conf_mult  = master.z_type == "BB" ? 0.35 : (ob_rz_absorb_local ? 0.15 : (slave.z_type == "RZ" ? 0.30 : 0.25))
+                        float conf_mult  = master.z_type == "BB" ? 0.35 : (ob_rz_absorb ? 0.15 : (slave.z_type == "RZ" ? 0.30 : 0.25))
                         float conf_bonus = slave.score * conf_mult
                         master.score := math.min(master.score + conf_bonus, 150.0)
                         master.absorbed_count := master.absorbed_count + 1
