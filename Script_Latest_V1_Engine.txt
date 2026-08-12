@@ -1439,6 +1439,10 @@ type Zone
     // V288: true, пока цена находится внутри зоны — ретест считается по фронту входа,
     // а не на каждом баре подряд.
     bool         inside_prev
+    // V288: накопленные (уже применённые) штрафы — не дают повторно списывать score
+    // на каждом баре. Хранят ПОЛНУЮ величину штрафа, применённую к зоне за всё время.
+    float        bb_decay_applied     // доля (0..0.2) возрастного штрафа BB
+    float        fvg_penalty_applied  // абсолютные пункты (0..25) штрафа за заполнение FVG
     // V281: Side-stripe line for support/resistance visual distinction
     line         side_stripe       // Colored stripe: bottom for support (green), top for resistance (red)
 
@@ -4093,6 +4097,11 @@ f_resolve_zone_conflicts() =>
                     ob_z.active    := false
                     ob_z.mitigated := true
                     f_delete_zone_graphics(ob_z)
+                    // V288: если деактивирована именно zi, дальнейшее сравнение бессмысленно —
+                    // раньше цикл продолжался и мёртвая зона могла получать/раздавать
+                    // FVG-бонусы и «выигрывать» конфликты у живых зон.
+                    if not zi.active
+                        break
                     continue
                 // FVG+OB того же направления: добавить 30% score FVG зоны к OB зоне
                 bool same_dir = zi.is_bull == zj.is_bull
@@ -4270,6 +4279,7 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         regime_at_creation=0, inst_footprint=0.0,
         initial_score=sc, retest_count=0,
         age_credit=0.0, inside_prev=false,
+        bb_decay_applied=0.0, fvg_penalty_applied=0.0,
         side_stripe=na)
     n
 
@@ -4872,12 +4882,20 @@ f_mng() =>
                 [dist, _far] = f_calc_zone_validity(z)
                 far := _far
                 f_update_sfp(z)
-                // V270: BB age decay — reduce score by 20% after 100 bars untouched
+                // V270/V288: BB age decay — суммарный штраф до 20% за возраст.
+                // Ранее множитель (1 - penalty) применялся к score на КАЖДОМ подтверждённом
+                // баре после 100-го, то есть штраф компаундировался (0.8^N) и score любой BB
+                // за десяток баров падал до пола 10. Теперь применяем только приращение
+                // штрафа относительно уже учтённого (bb_decay_applied).
                 if z.z_type == "BB" and (bar_index - z.created_at) > 100 and not z.mitigated
                     z.bb_age_bars := float(bar_index - z.created_at)
                     float age_penalty = math.min(0.2, f_safe_div(z.bb_age_bars - 100.0, 500.0))
-                    z.score := math.max(10.0, z.score * (1.0 - age_penalty))
-                    z.tier := f_tier(z.score)
+                    float _applied = nz(z.bb_decay_applied, 0.0)
+                    if age_penalty > _applied
+                        float _step = f_safe_div(1.0 - age_penalty, 1.0 - _applied)
+                        z.score := math.max(10.0, z.score * _step)
+                        z.bb_decay_applied := age_penalty
+                        z.tier := f_tier(z.score)
                 // V270: Mitigation Block — BB retested and held
                 if z.z_type == "BB" and z.mb_stage == 0
                     bool bb_retest = z.is_bull ? (low <= z.top and close >= z.bot) : (high >= z.bot and close <= z.top)
@@ -4921,13 +4939,18 @@ f_mng() =>
                         else
                             fill_amt := math.max(0, math.min(high, fvg_top) - fvg_bot)
                         z.fvg_fill_pct := math.min(1.0, f_safe_div(fill_amt, fvg_size))
-                        // V279: Nonlinear quadratic FVG fill penalty
+                        // V279/V288: Nonlinear quadratic FVG fill penalty
                         // Quadratic growth: 0 at 50% → 25 at 100% fill
-                        // More gradual penalty for partially filled FVGs, aggressive for near-complete fills
+                        // V288: штраф — накопительная величина, а не списание на каждом баре.
+                        // Ранее полный penalty вычитался из score КАЖДЫЙ подтверждённый бар,
+                        // пока FVG заполнена >50%, и score гарантированно уходил на пол 10.
                         if z.fvg_fill_pct > 0.5
                             float fill_excess = z.fvg_fill_pct - 0.5
                             float penalty = 25.0 * math.pow(fill_excess, 2) / 0.25
-                            z.score := math.max(10.0, z.score - penalty)
+                            float _fvg_applied = nz(z.fvg_penalty_applied, 0.0)
+                            if penalty > _fvg_applied
+                                z.score := math.max(10.0, z.score - (penalty - _fvg_applied))
+                                z.fvg_penalty_applied := penalty
                         z.tier := f_tier(z.score)
                         // Consequent Encroachment level
                         z.fvg_ce_level := (fvg_top + fvg_bot) / 2.0
@@ -4968,8 +4991,10 @@ f_mng() =>
                         rz_slave.active := false
                         rz_slave.mitigated := true
                         f_delete_zone_graphics(rz_slave)
-                        box.set_top(rz_master.gfx, rz_master.top)
-                        box.set_bottom(rz_master.gfx, rz_master.bot)
+                        // V288: полное обновление визуалов мастера. Раньше правились только
+                        // top/bottom основного бокса, а fib-сетка, glow, health-bar, side-stripe
+                        // и sniper-метка оставались на старых координатах узкой зоны.
+                        rz_master.update()
                         break
         f_limit_visible_zones()
 
