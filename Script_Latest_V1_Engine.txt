@@ -6026,3 +6026,74 @@ alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi
 // Use VISUAL indicator for dashboard, trade hints, session boxes, PD bands,
 // zone visualization, equity curve, and related alert conditions.
 
+
+// ── V291: БЛОК 11 — MTF DASHBOARD ─────────────────────────────────────────
+// Дашборд направления тренда по таймфреймам (1m → 1D) и расстояния (в тиках)
+// до смены направления рынка. Таблицы не расходуют 64 output-слота plot().
+group_dash = "📊 MTF Dashboard"
+dash_show    = input.bool(true,  "Показывать дашборд трендов", group=group_dash)
+dash_pos_inp = input.string("Верх-право", "Позиция дашборда", options=["Верх-лево", "Верх-право", "Низ-лево", "Низ-право", "Центр-право"], group=group_dash)
+dash_size_inp= input.string("Малый", "Размер текста", options=["Крошечный", "Малый", "Обычный", "Большой"], group=group_dash)
+dash_ema_len = input.int(50, "EMA-период для определения тренда", minval=5, maxval=400, tooltip="Направление тренда на ТФ = положение цены относительно EMA этого ТФ. Количество тиков до смены = расстояние от цены до этой EMA.", group=group_dash)
+dash_flat_adx= input.float(20.0, "ADX ниже этого значения = флэт", minval=5.0, maxval=50.0, step=1.0, group=group_dash)
+dash_bg      = input.color(color.new(#101828, 15), "Цвет фона", group=group_dash)
+
+// Данные по фиксированным ТФ. Вызовы request.security обязаны быть глобальными
+// и безусловными, поэтому считаем всегда, а рисуем только при dash_show.
+f_dash_tf(simple string tf) =>
+    request.security(syminfo.tickerid, tf, [close, ta.ema(close, dash_ema_len), f_adx(inp_adx_len)], lookahead=barmerge.lookahead_off)
+
+[_d1_c,  _d1_e,  _d1_a ] = f_dash_tf("1")
+[_d5_c,  _d5_e,  _d5_a ] = f_dash_tf("5")
+[_d15_c, _d15_e, _d15_a] = f_dash_tf("15")
+[_d60_c, _d60_e, _d60_a] = f_dash_tf("60")
+[_d240_c,_d240_e,_d240_a] = f_dash_tf("240")
+[_dD_c,  _dD_e,  _dD_a ] = f_dash_tf("D")
+
+// Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
+f_dash_dir(float c, float e, float adx) =>
+    na(c) or na(e) ? 0 : nz(adx, 0.0) < dash_flat_adx ? 0 : c > e ? 1 : c < e ? -1 : 0
+
+// Количество тиков до смены направления = дистанция цены до EMA данного ТФ.
+// Пробой EMA переворачивает знак направления, поэтому это и есть «запас хода».
+f_dash_ticks(float c, float e) =>
+    na(c) or na(e) or syminfo.mintick <= 0 ? na : math.round(math.abs(c - e) / syminfo.mintick)
+
+var table dash_tbl = na
+if dash_show and barstate.islast
+    string _pos = dash_pos_inp == "Верх-лево" ? position.top_left : dash_pos_inp == "Верх-право" ? position.top_right : dash_pos_inp == "Низ-лево" ? position.bottom_left : dash_pos_inp == "Низ-право" ? position.bottom_right : position.middle_right
+    string _sz  = dash_size_inp == "Крошечный" ? size.tiny : dash_size_inp == "Малый" ? size.small : dash_size_inp == "Обычный" ? size.normal : size.large
+
+    if na(dash_tbl)
+        dash_tbl := table.new(_pos, 3, 8, bgcolor=dash_bg, border_width=1, border_color=color.new(color.gray, 60))
+    table.clear(dash_tbl, 0, 0, 2, 7)
+
+    table.cell(dash_tbl, 0, 0, "ТФ",      text_color=color.silver, text_size=_sz, bgcolor=color.new(#1D2939, 10))
+    table.cell(dash_tbl, 1, 0, "Тренд",   text_color=color.silver, text_size=_sz, bgcolor=color.new(#1D2939, 10))
+    table.cell(dash_tbl, 2, 0, "Тиков",   text_color=color.silver, text_size=_sz, bgcolor=color.new(#1D2939, 10))
+
+    array<string> _tf_names = array.from("1m", "5m", "15m", "1H", "4H", "1D")
+    array<int>    _tf_dirs  = array.from(f_dash_dir(_d1_c, _d1_e, _d1_a), f_dash_dir(_d5_c, _d5_e, _d5_a), f_dash_dir(_d15_c, _d15_e, _d15_a), f_dash_dir(_d60_c, _d60_e, _d60_a), f_dash_dir(_d240_c, _d240_e, _d240_a), f_dash_dir(_dD_c, _dD_e, _dD_a))
+    array<float>  _tf_ticks = array.from(f_dash_ticks(_d1_c, _d1_e), f_dash_ticks(_d5_c, _d5_e), f_dash_ticks(_d15_c, _d15_e), f_dash_ticks(_d60_c, _d60_e), f_dash_ticks(_d240_c, _d240_e), f_dash_ticks(_dD_c, _dD_e))
+
+    int   _sum_dir  = 0
+    float _min_tick = na
+    for i = 0 to 5
+        int   _d = array.get(_tf_dirs, i)
+        float _t = array.get(_tf_ticks, i)
+        _sum_dir += _d
+        if not na(_t) and (na(_min_tick) or _t < _min_tick)
+            _min_tick := _t
+
+        string _lbl = _d > 0 ? "▲ Вверх" : _d < 0 ? "▼ Вниз" : "● Флэт"
+        color  _clr = _d > 0 ? #00C853 : _d < 0 ? #FF1744 : color.gray
+        table.cell(dash_tbl, 0, i + 1, array.get(_tf_names, i), text_color=color.silver, text_size=_sz)
+        table.cell(dash_tbl, 1, i + 1, _lbl, text_color=_clr, text_size=_sz)
+        table.cell(dash_tbl, 2, i + 1, na(_t) ? "—" : str.tostring(_t, "#"), text_color=color.new(_clr, 20), text_size=_sz)
+
+    // Итог: консенсус по всем ТФ и ближайшая смена направления
+    string _sum_lbl = _sum_dir >= 3 ? "▲ Бычий" : _sum_dir <= -3 ? "▼ Медвежий" : "● Смешанный"
+    color  _sum_clr = _sum_dir >= 3 ? #00C853 : _sum_dir <= -3 ? #FF1744 : color.orange
+    table.cell(dash_tbl, 0, 7, "ИТОГ", text_color=color.white, text_size=_sz, bgcolor=color.new(#1D2939, 10))
+    table.cell(dash_tbl, 1, 7, _sum_lbl, text_color=_sum_clr, text_size=_sz, bgcolor=color.new(#1D2939, 10))
+    table.cell(dash_tbl, 2, 7, na(_min_tick) ? "—" : str.tostring(_min_tick, "#"), text_color=_sum_clr, text_size=_sz, bgcolor=color.new(#1D2939, 10))
