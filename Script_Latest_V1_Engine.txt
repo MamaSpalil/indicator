@@ -404,7 +404,7 @@ dash_show    = input.bool(true,  "Показывать дашборд тренд
 dash_pos_inp = input.string("Верх-право", "Позиция дашборда", options=["Верх-лево", "Верх-право", "Низ-лево", "Низ-право", "Центр-право"], group=group_dash)
 dash_size_inp= input.string("Малый", "Размер текста", options=["Крошечный", "Малый", "Обычный", "Большой"], group=group_dash)
 dash_ema_len = input.int(50, "EMA-период для определения тренда", minval=5, maxval=400, tooltip="Направление тренда на ТФ = положение цены относительно EMA этого ТФ. Количество тиков до смены = расстояние от цены до этой EMA.", group=group_dash)
-dash_flat_adx= input.float(20.0, "ADX ниже этого значения = флэт", minval=5.0, maxval=50.0, step=1.0, group=group_dash)
+dash_flat_atr= input.float(0.15, "Флэт: |цена − EMA| ниже этого (× ATR)", minval=0.01, maxval=2.0, step=0.05, tooltip="V293: раньше флэт определялся по ADX каждого ТФ, из-за чего внутри request.security считалось шесть дополнительных ta.dmi и компиляция уходила в таймаут. Теперь флэт = цена находится ближе этого расстояния к EMA своего ТФ (в ATR текущего графика).", group=group_dash)
 dash_bg      = input.color(color.new(#101828, 15), "Цвет фона", group=group_dash)
 
 // ── V292: Фильтр надёжности зон ───────────────────────────────────────────
@@ -923,26 +923,33 @@ float prev_day_close = request.security(syminfo.tickerid, "D", close[1], lookahe
 // Расположен здесь, потому что зон-менеджер (БЛОК 7) ссылается на mtf_bias и
 // счётчики подтверждающих ТФ, а Pine требует объявления идентификаторов выше
 // по коду. Вызовы request.security обязаны быть глобальными и безусловными.
+// V293-fix: из запроса убран f_adx (ta.dmi). Шесть дополнительных DMI внутри
+// request.security компилировались как шесть отдельных подпрограмм и вместе с
+// уже имеющимися запросами выводили компиляцию ENGINE за лимит времени
+// TradingView («Pine compilation was timed out»). Флэт теперь определяется по
+// расстоянию цены до EMA своего ТФ в ATR текущего графика — дополнительных
+// серий это не требует.
 f_dash_tf(simple string tf) =>
-    request.security(syminfo.tickerid, tf, [close, ta.ema(close, dash_ema_len), f_adx(inp_adx_len)], lookahead=barmerge.lookahead_off)
+    request.security(syminfo.tickerid, tf, [close, ta.ema(close, dash_ema_len)], lookahead=barmerge.lookahead_off)
 
-[_d1_c,  _d1_e,  _d1_a ] = f_dash_tf("1")
-[_d5_c,  _d5_e,  _d5_a ] = f_dash_tf("5")
-[_d15_c, _d15_e, _d15_a] = f_dash_tf("15")
-[_d60_c, _d60_e, _d60_a] = f_dash_tf("60")
-[_d240_c,_d240_e,_d240_a] = f_dash_tf("240")
-[_dD_c,  _dD_e,  _dD_a ] = f_dash_tf("D")
+[_d1_c,   _d1_e  ] = f_dash_tf("1")
+[_d5_c,   _d5_e  ] = f_dash_tf("5")
+[_d15_c,  _d15_e ] = f_dash_tf("15")
+[_d60_c,  _d60_e ] = f_dash_tf("60")
+[_d240_c, _d240_e] = f_dash_tf("240")
+[_dD_c,   _dD_e  ] = f_dash_tf("D")
 
 // Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
-f_dash_dir(float c, float e, float adx) =>
-    na(c) or na(e) ? 0 : nz(adx, 0.0) < dash_flat_adx ? 0 : c > e ? 1 : c < e ? -1 : 0
+f_dash_dir(float c, float e) =>
+    float _flat_gap = dash_flat_atr * math.max(atr_val, syminfo.mintick)
+    na(c) or na(e) ? 0 : math.abs(c - e) < _flat_gap ? 0 : c > e ? 1 : -1
 
-int mtf_dir_1   = f_dash_dir(_d1_c,   _d1_e,   _d1_a)
-int mtf_dir_5   = f_dash_dir(_d5_c,   _d5_e,   _d5_a)
-int mtf_dir_15  = f_dash_dir(_d15_c,  _d15_e,  _d15_a)
-int mtf_dir_60  = f_dash_dir(_d60_c,  _d60_e,  _d60_a)
-int mtf_dir_240 = f_dash_dir(_d240_c, _d240_e, _d240_a)
-int mtf_dir_D   = f_dash_dir(_dD_c,   _dD_e,   _dD_a)
+int mtf_dir_1   = f_dash_dir(_d1_c,   _d1_e)
+int mtf_dir_5   = f_dash_dir(_d5_c,   _d5_e)
+int mtf_dir_15  = f_dash_dir(_d15_c,  _d15_e)
+int mtf_dir_60  = f_dash_dir(_d60_c,  _d60_e)
+int mtf_dir_240 = f_dash_dir(_d240_c, _d240_e)
+int mtf_dir_D   = f_dash_dir(_dD_c,   _dD_e)
 
 // Взвешенный консенсус [-1..1]: старший ТФ весомее младшего (1,1,2,3,4,5 → сумма 16).
 float mtf_bias = (mtf_dir_1 + mtf_dir_5 + 2 * mtf_dir_15 + 3 * mtf_dir_60 + 4 * mtf_dir_240 + 5 * mtf_dir_D) / 16.0
