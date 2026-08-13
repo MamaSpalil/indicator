@@ -398,6 +398,29 @@ use_rz_zigzag      = input.bool(true,  "Зигзаг-граница для Rejec
 
 // V280: Trend Lines inputs moved to VISUAL to reduce ENGINE token count
 
+// ── V291: MTF Dashboard (входы; отрисовка — БЛОК 11) ──────────────────────
+group_dash = "📊 MTF Dashboard"
+dash_show    = input.bool(true,  "Показывать дашборд трендов", group=group_dash)
+dash_pos_inp = input.string("Верх-право", "Позиция дашборда", options=["Верх-лево", "Верх-право", "Низ-лево", "Низ-право", "Центр-право"], group=group_dash)
+dash_size_inp= input.string("Малый", "Размер текста", options=["Крошечный", "Малый", "Обычный", "Большой"], group=group_dash)
+dash_ema_len = input.int(50, "EMA-период для определения тренда", minval=5, maxval=400, tooltip="Направление тренда на ТФ = положение цены относительно EMA этого ТФ. Количество тиков до смены = расстояние от цены до этой EMA.", group=group_dash)
+dash_flat_adx= input.float(20.0, "ADX ниже этого значения = флэт", minval=5.0, maxval=50.0, step=1.0, group=group_dash)
+dash_bg      = input.color(color.new(#101828, 15), "Цвет фона", group=group_dash)
+
+// ── V292: Фильтр надёжности зон ───────────────────────────────────────────
+// Отсекает от отрисовки слабые/отработанные/нерелевантные зоны. Отфильтрованные
+// зоны НЕ удаляются из базы: они продолжают жить, набирать ретесты и конфлюэнс
+// и возвращаются на график, как только проходят порог.
+group_rel = "🎯 Надёжность зон"
+use_rel_filter   = input.bool(true, "Показывать только надёжные зоны", tooltip="Оставляет на графике только зоны, прошедшие гейт надёжности (tier + индекс надёжности + MTF-подтверждение + близость к цене).", group=group_rel)
+rel_min_tier     = input.string("NORMAL", "Мин. tier зоны", options=["PIVOT", "NORMAL", "STRONG", "BEST"], tooltip="PIVOT — показывать всё. NORMAL — score ≥ 40. STRONG — score ≥ 80. BEST — score ≥ 100.", group=group_rel)
+rel_min_index    = input.float(60.0, "Мин. индекс надёжности (0–100)", minval=0.0, maxval=100.0, step=5.0, tooltip="Итоговый индекс = эффективный score (с учётом затухания) + бонусы за ретесты, конфлюэнс, поглощения и согласование с MTF − штрафы за митигацию и удалённость от цены.", group=group_rel)
+rel_max_per_side = input.int(3, "Макс. зон на сторону", minval=1, maxval=20, tooltip="Сколько лучших зон поддержки и сопротивления отрисовывать одновременно.", group=group_rel)
+rel_max_dist_atr = input.float(6.0, "Макс. дистанция до цены (× ATR)", minval=1.0, maxval=30.0, step=0.5, tooltip="Зоны дальше этого расстояния не отрисовываются: реакции в ближайшее время от них ждать не приходится.", group=group_rel)
+use_rel_mtf      = input.bool(true, "Требовать MTF-подтверждение", tooltip="Зона поддержки показывается, только если направление вверх подтверждено минимум N таймфреймами (1m/5m/15m/1H/4H/1D), и наоборот для сопротивления.", group=group_rel)
+rel_mtf_min      = input.int(2, "Мин. кол-во ТФ, подтверждающих направление", minval=0, maxval=6, group=group_rel)
+rel_hide_mitigated = input.bool(true, "Скрывать отработанные (митигированные) зоны", group=group_rel)
+
 
 group_fut = "⚡ Futures Engine"
 use_vwap         = input.bool(true,  "Включить VWAP-фильтр (фьючерсы)", group=group_fut)
@@ -894,6 +917,38 @@ float htf_vol_ctx_c = math.max(0.5, math.min(3.0, htf_vol_ctx))
 float prev_day_high  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_on)
 float prev_day_low   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_on)
 float prev_day_close = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+
+// ── V292: MTF-консенсус направления (1m → 1D) ─────────────────────────────
+// Единый источник данных для дашборда (БЛОК 11) и для фильтра надёжности зон.
+// Расположен здесь, потому что зон-менеджер (БЛОК 7) ссылается на mtf_bias и
+// счётчики подтверждающих ТФ, а Pine требует объявления идентификаторов выше
+// по коду. Вызовы request.security обязаны быть глобальными и безусловными.
+f_dash_tf(simple string tf) =>
+    request.security(syminfo.tickerid, tf, [close, ta.ema(close, dash_ema_len), f_adx(inp_adx_len)], lookahead=barmerge.lookahead_off)
+
+[_d1_c,  _d1_e,  _d1_a ] = f_dash_tf("1")
+[_d5_c,  _d5_e,  _d5_a ] = f_dash_tf("5")
+[_d15_c, _d15_e, _d15_a] = f_dash_tf("15")
+[_d60_c, _d60_e, _d60_a] = f_dash_tf("60")
+[_d240_c,_d240_e,_d240_a] = f_dash_tf("240")
+[_dD_c,  _dD_e,  _dD_a ] = f_dash_tf("D")
+
+// Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
+f_dash_dir(float c, float e, float adx) =>
+    na(c) or na(e) ? 0 : nz(adx, 0.0) < dash_flat_adx ? 0 : c > e ? 1 : c < e ? -1 : 0
+
+int mtf_dir_1   = f_dash_dir(_d1_c,   _d1_e,   _d1_a)
+int mtf_dir_5   = f_dash_dir(_d5_c,   _d5_e,   _d5_a)
+int mtf_dir_15  = f_dash_dir(_d15_c,  _d15_e,  _d15_a)
+int mtf_dir_60  = f_dash_dir(_d60_c,  _d60_e,  _d60_a)
+int mtf_dir_240 = f_dash_dir(_d240_c, _d240_e, _d240_a)
+int mtf_dir_D   = f_dash_dir(_dD_c,   _dD_e,   _dD_a)
+
+// Взвешенный консенсус [-1..1]: старший ТФ весомее младшего (1,1,2,3,4,5 → сумма 16).
+float mtf_bias = (mtf_dir_1 + mtf_dir_5 + 2 * mtf_dir_15 + 3 * mtf_dir_60 + 4 * mtf_dir_240 + 5 * mtf_dir_D) / 16.0
+// Количество ТФ, подтверждающих каждое направление (для гейта надёжности зон)
+int mtf_up_cnt = (mtf_dir_1 > 0 ? 1 : 0) + (mtf_dir_5 > 0 ? 1 : 0) + (mtf_dir_15 > 0 ? 1 : 0) + (mtf_dir_60 > 0 ? 1 : 0) + (mtf_dir_240 > 0 ? 1 : 0) + (mtf_dir_D > 0 ? 1 : 0)
+int mtf_dn_cnt = (mtf_dir_1 < 0 ? 1 : 0) + (mtf_dir_5 < 0 ? 1 : 0) + (mtf_dir_15 < 0 ? 1 : 0) + (mtf_dir_60 < 0 ? 1 : 0) + (mtf_dir_240 < 0 ? 1 : 0) + (mtf_dir_D < 0 ? 1 : 0)
 
 // Dynamic scaling factors
 // inv_vol: high volatility → smaller lookback; low volatility → larger lookback
@@ -1480,6 +1535,9 @@ type Zone
     bool         fvg_conf_applied     // бонус конфлюэнса с соседней FVG-зоной уже начислен
     // V281: Side-stripe line for support/resistance visual distinction
     line         side_stripe       // Colored stripe: bottom for support (green), top for resistance (red)
+    // V292: зона не прошла гейт надёжности — её графика скрывается, но сама зона
+    // остаётся в zone_db и может вернуться на график, когда «дозреет».
+    bool         hidden
 
 var array<Zone> zone_db = array.new<Zone>()
 
@@ -1816,8 +1874,14 @@ method update(Zone this) =>
         if not na(this.sn_lbl)
             label.set_x(this.sn_lbl, bar_index + 5)
             label.set_y(this.sn_lbl, this.sniper_price)
+            // V292: возвращаем видимость метки, если зона снова прошла гейт надёжности
+            if not this.hidden
+                label.set_textcolor(this.sn_lbl, color.new(color.white, 0))
+                if label.get_text(this.sn_lbl) == ""
+                    string _sn_prefix = this.z_type == "BB" ? "🛡️ Brk " : "🎯 "
+                    label.set_text(this.sn_lbl, _sn_prefix + f_mt(this.sniper_price))
 
-        if use_fib_grid and this.z_type != "BB"
+        if use_fib_grid and this.z_type != "BB" and not this.hidden
             int hud_lookback = 25
             int x1_visual    = math.max(this.created_at, bar_index - hud_lookback)
             this.draw_grid(this.grid_lines, this.grid_labels, this.top, this.bot, x1_visual)
@@ -1846,7 +1910,7 @@ method update(Zone this) =>
                 box.set_right(this.fvg_gfx, bar_index + 3)
                 box.set_bgcolor(this.fvg_gfx, f_fvg_color(this.score, this.is_bull))
 
-                if use_fib_grid
+                if use_fib_grid and not this.hidden
                     float z_high = math.max(this.top, this.bot)
                     float z_low  = math.min(this.top, this.bot)
                     float f_high = math.max(ft, fb)
@@ -1894,6 +1958,20 @@ method update(Zone this) =>
         string pat_str    = (not na(this.patterns_info) and this.patterns_info != "") ? "\n[" + this.patterns_info + "]" : ""
         string lbl_txt    = z_prefix + emoji + " " + str.tostring(this.score, "#.0") + abs_str + idm_txt + pat_str + fvg_str
 
+        // V292: зона не прошла гейт надёжности — делаем её графику полностью
+        // прозрачной и снимаем эффекты. Сама зона остаётся живой в zone_db.
+        if this.hidden
+            c_bg_z  := C_BLACK100
+            c_bd_z  := C_BLACK100
+            lbl_txt := ""
+            if not na(this.fvg_gfx)
+                box.set_bgcolor(this.fvg_gfx, C_BLACK100)
+                box.set_border_color(this.fvg_gfx, C_BLACK100)
+            if not na(this.sn_lbl)
+                label.set_text(this.sn_lbl, "")
+                label.set_color(this.sn_lbl, C_BLACK100)
+                label.set_textcolor(this.sn_lbl, C_BLACK100)
+
         box.set_border_color(this.gfx, c_bd_z)
         box.set_bgcolor(this.gfx, c_bg_z)
         box.set_border_style(this.gfx, stl)
@@ -1905,12 +1983,15 @@ method update(Zone this) =>
             box.set_text_valign(this.gfx, text.align_top)
 
         // ── V249: Обновляем визуальные эффекты ───────────────────────────
-        f_update_glow(this, c_bd_z)
-        f_update_health_bar(this)
-        f_update_bb_arrow(this)
-        f_update_fvg_connector(this)
-        f_update_rz_zigzag(this)
-        f_update_side_stripe(this, c_bd_z)
+        if this.hidden
+            f_delete_zone_visuals(this)
+        else
+            f_update_glow(this, c_bd_z)
+            f_update_health_bar(this)
+            f_update_bb_arrow(this)
+            f_update_fvg_connector(this)
+            f_update_rz_zigzag(this)
+            f_update_side_stripe(this, c_bd_z)
 
         // Debug label
         bool should_show_debug = debug_mode and not this.debug_shown and this.debug_log != "" and this.score > 60
@@ -4137,6 +4218,52 @@ f_garbage_collection(array<Zone> to_keep) =>
 f_effective_score(Zone z) =>
     z.score * nz(z.decay_factor, 1.0)
 
+// ── V292: Индекс надёжности зоны (0–100) ──────────────────────────────────
+// Сырой score отвечает на вопрос «насколько качественно зона сформирована»,
+// но не на вопрос «будет ли реакция рынка именно здесь и сейчас». Индекс
+// надёжности добавляет к нему подтверждённость (ретесты, конфлюэнс, поглощения),
+// согласование со старшими таймфреймами и актуальность (близость к цене,
+// не отработана ли зона).
+f_tier_rank(string t) =>
+    t == "BEST" ? 3 : t == "STRONG" ? 2 : t == "NORMAL" ? 1 : 0
+
+f_zone_dist_atr(Zone z) =>
+    // Дистанция до ближней границы зоны в ATR: цена внутри зоны → 0
+    float _gap = close > z.top ? close - z.top : (close < z.bot ? z.bot - close : 0.0)
+    f_safe_div(_gap, math.max(atr_val, syminfo.mintick))
+
+f_zone_reliability(Zone z) =>
+    // База: эффективный score (0–150 с учётом затухания) → шкала 0–100
+    float rel = math.min(100.0, f_effective_score(z) / 1.5)
+    // Подтверждение историей: удержанные ретесты — сильнейший признак реакции
+    rel += math.min(12.0, nz(z.retest_count, 0) * 4.0)
+    // Конфлюэнс с ключевыми уровнями (VWAP/PDH/PDL/структура) и поглощённые зоны
+    rel += math.min(10.0, nz(z.confluence_bonus, 0.0) * 0.5)
+    rel += math.min(8.0,  nz(z.absorbed_count, 0) * 3.0)
+    // Propulsion / Mitigation Block — институциональный след
+    if z.is_propulsion or z.is_mitigation
+        rel += 5.0
+    // MTF: согласование направления зоны со взвешенным консенсусом 1m→1D
+    rel += 15.0 * (z.is_bull ? 1.0 : -1.0) * nz(mtf_bias, 0.0)
+    // Отработанная зона: реакция уже была использована
+    if z.mitigated
+        rel -= 25.0
+    // Актуальность: чем дальше зона от цены, тем ниже шанс реакции в ближайшее время
+    rel -= math.min(20.0, math.max(0.0, f_zone_dist_atr(z) - 3.0) * 3.0)
+    math.max(0.0, math.min(100.0, rel))
+
+// Гейт: зону допускаем к отрисовке только при выполнении всех условий сразу.
+f_zone_passes_reliability(Zone z) =>
+    bool ok = true
+    if use_rel_filter
+        int _mtf_conf = z.is_bull ? mtf_up_cnt : mtf_dn_cnt
+        ok := f_tier_rank(z.tier) >= f_tier_rank(rel_min_tier)
+        ok := ok and f_zone_reliability(z) >= rel_min_index
+        ok := ok and f_zone_dist_atr(z) <= rel_max_dist_atr
+        ok := ok and (not rel_hide_mitigated or not z.mitigated)
+        ok := ok and (not use_rel_mtf or _mtf_conf >= rel_mtf_min)
+    ok
+
 f_merge_nested_zones() =>
     int sz = array.size(zone_db)
     if sz > 1
@@ -4294,6 +4421,10 @@ f_limit_visible_zones() =>
         array.set(_pre_gc_cnt_rz,    0, 0)
         array.set(_pre_gc_cnt_other, 0, 0)
         for z in candidates
+            // V292: при включённом фильтре считаем только реально отрисованные зоны,
+            // иначе счётчик на дашборде расходится с картинкой на графике
+            if use_rel_filter and z.hidden
+                continue
             if z.z_type == "BB"
                 array.set(_pre_gc_cnt_bb,  0, array.get(_pre_gc_cnt_bb,  0) + 1)
             else if z.z_type == "RZ" or z.z_type == "MBR"
@@ -4311,9 +4442,32 @@ f_limit_visible_zones() =>
                 // V288: ранжируем по эффективному score (score × decay_factor) — той же мере,
                 // что используется при экспорте зон в VISUAL. Раньше ENGINE отбирал зоны по
                 // сырому score, из-за чего на графике и в VISUAL выживали разные зоны.
-                array.push(scores, f_effective_score(z))
+                // V292: при включённом фильтре ранжируем по индексу надёжности — он
+                // дополнительно учитывает ретесты, конфлюэнс, MTF и близость к цене.
+                array.push(scores, use_rel_filter ? f_zone_reliability(z) : f_effective_score(z))
             int[] sorted_indices = array.sort_indices(scores, order.descending)
             array<Zone> to_keep  = array.new<Zone>()
+
+            // ── V292: гейт надёжности отрисовки ───────────────────────────
+            // Зоны, не прошедшие гейт, помечаются hidden и не рисуются, но остаются
+            // в zone_db: они продолжают накапливать ретесты/конфлюэнс и возвращаются
+            // на график, как только становятся надёжными. Дополнительно ограничиваем
+            // число одновременно показываемых зон каждой стороны.
+            int _shown_bull = 0
+            int _shown_bear = 0
+            for idx = 0 to array.size(sorted_indices) - 1
+                Zone z = array.get(candidates, array.get(sorted_indices, idx))
+                bool _show = true
+                if use_rel_filter
+                    _show := f_zone_passes_reliability(z)
+                    if _show
+                        if z.is_bull
+                            _show := _shown_bull < rel_max_per_side
+                            _shown_bull += _show ? 1 : 0
+                        else
+                            _show := _shown_bear < rel_max_per_side
+                            _shown_bear += _show ? 1 : 0
+                z.hidden := not _show
 
             // V278: Dynamic SAFE_MAX — accounts for actual drawing element usage per zone
             // TradingView hard limits: max_boxes_count=500, max_lines_count=500, max_labels_count=500
@@ -4429,7 +4583,7 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         mit_armed=false, mit_touched=false,
         bb_decay_applied=0.0, fvg_penalty_applied=0.0,
         poc_bonus_applied=false, fvg_conf_applied=false,
-        side_stripe=na)
+        side_stripe=na, hidden=false)
     n
 
 f_create_new_zones() =>
@@ -5810,6 +5964,10 @@ if array.size(zone_db) > 0
         // валидными S/R и не экспортируются в VISUAL наравне со свежими
         if z.mitigated
             continue
+        // V292: экспортируем только зоны, прошедшие гейт надёжности, чтобы ENGINE
+        // и VISUAL показывали один и тот же отфильтрованный набор
+        if use_rel_filter and z.hidden
+            continue
         float _zmid = (z.top + z.bot) / 2.0
         float _zdist = math.abs(close - _zmid)
         // V287: priority = score × decay × proximity_weight
@@ -6030,29 +6188,8 @@ alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi
 // ── V291: БЛОК 11 — MTF DASHBOARD ─────────────────────────────────────────
 // Дашборд направления тренда по таймфреймам (1m → 1D) и расстояния (в тиках)
 // до смены направления рынка. Таблицы не расходуют 64 output-слота plot().
-group_dash = "📊 MTF Dashboard"
-dash_show    = input.bool(true,  "Показывать дашборд трендов", group=group_dash)
-dash_pos_inp = input.string("Верх-право", "Позиция дашборда", options=["Верх-лево", "Верх-право", "Низ-лево", "Низ-право", "Центр-право"], group=group_dash)
-dash_size_inp= input.string("Малый", "Размер текста", options=["Крошечный", "Малый", "Обычный", "Большой"], group=group_dash)
-dash_ema_len = input.int(50, "EMA-период для определения тренда", minval=5, maxval=400, tooltip="Направление тренда на ТФ = положение цены относительно EMA этого ТФ. Количество тиков до смены = расстояние от цены до этой EMA.", group=group_dash)
-dash_flat_adx= input.float(20.0, "ADX ниже этого значения = флэт", minval=5.0, maxval=50.0, step=1.0, group=group_dash)
-dash_bg      = input.color(color.new(#101828, 15), "Цвет фона", group=group_dash)
-
-// Данные по фиксированным ТФ. Вызовы request.security обязаны быть глобальными
-// и безусловными, поэтому считаем всегда, а рисуем только при dash_show.
-f_dash_tf(simple string tf) =>
-    request.security(syminfo.tickerid, tf, [close, ta.ema(close, dash_ema_len), f_adx(inp_adx_len)], lookahead=barmerge.lookahead_off)
-
-[_d1_c,  _d1_e,  _d1_a ] = f_dash_tf("1")
-[_d5_c,  _d5_e,  _d5_a ] = f_dash_tf("5")
-[_d15_c, _d15_e, _d15_a] = f_dash_tf("15")
-[_d60_c, _d60_e, _d60_a] = f_dash_tf("60")
-[_d240_c,_d240_e,_d240_a] = f_dash_tf("240")
-[_dD_c,  _dD_e,  _dD_a ] = f_dash_tf("D")
-
-// Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
-f_dash_dir(float c, float e, float adx) =>
-    na(c) or na(e) ? 0 : nz(adx, 0.0) < dash_flat_adx ? 0 : c > e ? 1 : c < e ? -1 : 0
+// V292: входы, request.security и f_dash_dir перенесены в БЛОК 2 (MTF-консенсус),
+// так как их использует фильтр надёжности зон, работающий раньше по коду.
 
 // Количество тиков до смены направления = дистанция цены до EMA данного ТФ.
 // Пробой EMA переворачивает знак направления, поэтому это и есть «запас хода».
@@ -6073,7 +6210,7 @@ if dash_show and barstate.islast
     table.cell(dash_tbl, 2, 0, "Тиков",   text_color=color.silver, text_size=_sz, bgcolor=color.new(#1D2939, 10))
 
     array<string> _tf_names = array.from("1m", "5m", "15m", "1H", "4H", "1D")
-    array<int>    _tf_dirs  = array.from(f_dash_dir(_d1_c, _d1_e, _d1_a), f_dash_dir(_d5_c, _d5_e, _d5_a), f_dash_dir(_d15_c, _d15_e, _d15_a), f_dash_dir(_d60_c, _d60_e, _d60_a), f_dash_dir(_d240_c, _d240_e, _d240_a), f_dash_dir(_dD_c, _dD_e, _dD_a))
+    array<int>    _tf_dirs  = array.from(mtf_dir_1, mtf_dir_5, mtf_dir_15, mtf_dir_60, mtf_dir_240, mtf_dir_D)
     array<float>  _tf_ticks = array.from(f_dash_ticks(_d1_c, _d1_e), f_dash_ticks(_d5_c, _d5_e), f_dash_ticks(_d15_c, _d15_e), f_dash_ticks(_d60_c, _d60_e), f_dash_ticks(_d240_c, _d240_e), f_dash_ticks(_dD_c, _dD_e))
 
     int   _sum_dir  = 0
