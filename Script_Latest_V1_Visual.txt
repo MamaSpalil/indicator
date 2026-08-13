@@ -429,15 +429,19 @@ zone_res_col  = input.color(color.new(#FF1744, 70), "Цвет: зоны сопр
 group_eng = "🔗 ENGINE DATA (input.source)"
 // ── Канал версии — подключите ПЕРВЫМ для автоопределения ──
 // V287: Поддерживается V286 (legacy) и V287 (full multi-color)
-eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="ШАГ 1 (рекомендуется): просто перетащите VISUAL поверх ENGINE на одном графике — каналы подключатся автоматически по порядку plot().\n\nШАГ 2 (если не сработало): здесь вручную выберите 'Trading Fluppy ENGINE: ENG: Version', затем подключите остальные каналы ниже в том же порядке.\n\nОжидаемое значение: 287.0 (или 286.0 в legacy-режиме). Корректное подключение этого канала включает 'Auto ✓' и подсвечивает дашборд зелёным.", group=group_eng)
-// ── Автоопределение ENGINE по каналу Version (V287: backward compatible с V286) ──
-float EXPECTED_ENG_VERSION = 287.0
-float LEGACY_ENG_VERSION   = 286.0  // V287: поддерживаем V286 как legacy
+eng_version      = input.source(close, "⚡ VIS: Version (подключите первым!)", tooltip="ШАГ 1 (рекомендуется): просто перетащите VISUAL поверх ENGINE на одном графике — каналы подключатся автоматически по порядку plot().\n\nШАГ 2 (если не сработало): здесь вручную выберите 'Trading Fluppy ENGINE: ENG: Version', затем подключите остальные каналы ниже в том же порядке.\n\nОжидаемое значение: 288.0 (поддерживаются также 287.0 и 286.0 в legacy-режиме). Корректное подключение этого канала включает 'Auto ✓' и подсвечивает дашборд зелёным.", group=group_eng)
+// ── Автоопределение ENGINE по каналу Version (V291: backward compatible с V287/V286) ──
+float EXPECTED_ENG_VERSION = 288.0
+float LEGACY_ENG_VERSION   = 286.0  // V287: поддерживаем V286 как legacy (без meta-каналов)
+float PREV_ENG_VERSION     = 287.0  // V291: V287 — meta есть, каналов Age ещё нет
 int   _v_round            = int(math.round(eng_version))
 int   _expected_round     = int(math.round(EXPECTED_ENG_VERSION))
 int   _legacy_round       = int(math.round(LEGACY_ENG_VERSION))
-bool  _auto_engine        = _v_round == _expected_round or _v_round == _legacy_round
+int   _prev_round         = int(math.round(PREV_ENG_VERSION))
+bool  _auto_engine        = _v_round == _expected_round or _v_round == _prev_round or _v_round == _legacy_round
 bool  _is_legacy_engine   = _v_round == _legacy_round
+// V291: каналы возраста зон появились только в ENGINE v288
+bool  _has_zone_age       = _v_round == _expected_round
 eng_connect_mode = input.string("Auto", "Режим подключения ENGINE", options=["Auto", "Вкл (Force ON)", "Выкл (Force OFF)"], tooltip="Auto (рекомендуется): автоопределение по каналу Version. Поддерживается ENGINE v286 (legacy) и v287 (full). 'Вкл (Force ON)' — принудительно использовать input.source(). 'Выкл (Force OFF)' — локальные fallback.", group=group_eng)
 bool  use_engine_data = eng_connect_mode == "Auto" ? _auto_engine : (eng_connect_mode == "Вкл (Force ON)")
 // ── Каналы данных (порядок соответствует ENGINE plot-каналам) ──
@@ -504,6 +508,11 @@ eng_sup2_meta    = input.source(close, "VIS: Sup2 Meta",      tooltip="→ ENG: 
 eng_res1_meta    = input.source(close, "VIS: Res1 Meta",      tooltip="→ ENG: Res1 Meta | Метаданные зоны Res1 (см. Sup1 Meta)", group=group_eng)
 eng_res2_meta    = input.source(close, "VIS: Res2 Meta",      tooltip="→ ENG: Res2 Meta | Метаданные зоны Res2 (см. Sup1 Meta)", group=group_eng)
 eng_cnt_other    = input.source(close, "VIS: Cnt Other",      tooltip="→ ENG: Cnt Other | Количество активных «прочих» зон: IMB+ACC+DST+VCP+MBR (отдельно от Sup/Res/BB/RZ)", group=group_eng)
+// V291: возраст зон в барах — левый край box строится как bar_index - age (привязка к бару)
+eng_sup1_age     = input.source(close, "VIS: Sup1 Age",       tooltip="→ ENG: Sup1 Age | Возраст зоны Sup1 в барах (bar_index - бар формирования)", group=group_eng)
+eng_sup2_age     = input.source(close, "VIS: Sup2 Age",       tooltip="→ ENG: Sup2 Age | Возраст зоны Sup2 в барах", group=group_eng)
+eng_res1_age     = input.source(close, "VIS: Res1 Age",       tooltip="→ ENG: Res1 Age | Возраст зоны Res1 в барах", group=group_eng)
+eng_res2_age     = input.source(close, "VIS: Res2 Age",       tooltip="→ ENG: Res2 Age | Возраст зоны Res2 в барах", group=group_eng)
 // V286: Stoch Mu/Sigma/Eta, Kelly F, Sharpe, Sortino, MC DD95 removed from ENGINE channels
 // These are now computed locally in VISUAL from exported trade data (Trades/Wins/Gross Profit/Gross Loss/Equity)
 
@@ -536,6 +545,8 @@ float v_equity       = use_engine_data ? eng_equity       : src_equity
 float v_dd_pct       = use_engine_data ? eng_dd_pct       : src_dd_pct
 // V278: Sanity check — zone counts above max are impossible (likely close price from unconnected channel)
 int   _MAX_ZONE_COUNT = 500  // TradingView max_boxes_count limit; any count above this is invalid
+// V291: верхняя граница возраста зоны (совпадает с MAX_ZONE_AGE_EXPORT в ENGINE)
+int   _MAX_ZONE_AGE   = 4999
 int   _raw_cnt_sup   = math.round(use_engine_data ? eng_zones_sup    : src_zones_sup)
 int   _raw_cnt_res   = math.round(use_engine_data ? eng_zones_res    : src_zones_res)
 int   _raw_cnt_bb    = math.round(use_engine_data ? eng_zones_bb     : src_zones_bb)
@@ -704,6 +715,16 @@ float v_res2_meta    = (use_engine_data and not _is_legacy_engine) ? eng_res2_me
 // V287: cnt_other with inline sanity-cap (Pine v6 disallows := on non-var; use single ternary instead)
 int   _raw_cnt_other = int(math.max(0, math.round((use_engine_data and not _is_legacy_engine) ? eng_cnt_other : 0.0)))
 int   v_cnt_other    = _raw_cnt_other >= 0 and _raw_cnt_other <= _MAX_ZONE_COUNT ? _raw_cnt_other : 0
+
+// V291: возраст зон (бары с момента формирования). Используется для привязки левого
+// края box к бару зоны. При legacy-ENGINE (нет канала) — 0, тогда применяется fallback.
+f_zone_age(float raw) =>
+    int _a = int(math.round(nz(raw, 0.0)))
+    _a >= 0 and _a <= _MAX_ZONE_AGE ? _a : 0
+int   v_sup1_age     = (use_engine_data and _has_zone_age) ? f_zone_age(eng_sup1_age) : 0
+int   v_sup2_age     = (use_engine_data and _has_zone_age) ? f_zone_age(eng_sup2_age) : 0
+int   v_res1_age     = (use_engine_data and _has_zone_age) ? f_zone_age(eng_res1_age) : 0
+int   v_res2_age     = (use_engine_data and _has_zone_age) ? f_zone_age(eng_res2_age) : 0
 
 // Decode each meta channel to access (z_type, tier, score, is_propulsion, is_bull)
 [v_sup1_ztype, v_sup1_tier_d, v_sup1_score_d, v_sup1_prop, v_sup1_isbull] = f_decode_zone_meta(v_sup1_meta)
@@ -1184,7 +1205,11 @@ if show_ote
     if not na(_ote_top) and not na(_ote_bot) and _ote_top > _ote_bot
         if not na(_ote_box)
             box.delete(_ote_box)
-        _ote_box := box.new(bar_index - 50, _ote_top, bar_index + 5, _ote_bot,
+        // V291-fix: левый край привязан к бару экстремума импульса (ранее — фиксированные
+        // 50 баров, из-за чего OTE-зона «висела» независимо от своего свинга).
+        int _ote_anchor_off = _bull_leg ? _imp_low_off : _imp_high_off
+        int _ote_left = math.max(0, bar_index + math.min(0, nz(_ote_anchor_off, -50)))
+        _ote_box := box.new(_ote_left, _ote_top, bar_index + 5, _ote_bot,
              border_color=color.new(_ote_col, 40), bgcolor=_ote_col,
              border_style=line.style_dotted, border_width=1, xloc=xloc.bar_index,
              text=_ote_txt, text_size=size.tiny, text_color=color.new(color.white, 20),
@@ -1713,8 +1738,14 @@ if show_zones_v and use_engine_data and barstate.islast
     _vis_glow_res2_t := na
     _vis_glow_res2_b := na
 
-    // V287/BUG-10: Extended left edge (200 bars) for better visual history
-    int _zbox_left = math.max(0, bar_index - 200)
+    // V291-fix: раньше все зоны рисовались от фиксированного bar_index - 200 и выглядели
+    // «неприкреплёнными» к барам. Теперь левый край = бар формирования зоны (ENGINE Age).
+    // Fallback (legacy-ENGINE без канала Age) — прежние 200 баров истории.
+    int _zbox_fallback = math.max(0, bar_index - 200)
+    int _s1_left = v_sup1_age > 0 ? math.max(0, bar_index - v_sup1_age) : _zbox_fallback
+    int _s2_left = v_sup2_age > 0 ? math.max(0, bar_index - v_sup2_age) : _zbox_fallback
+    int _r1_left = v_res1_age > 0 ? math.max(0, bar_index - v_res1_age) : _zbox_fallback
+    int _r2_left = v_res2_age > 0 ? math.max(0, bar_index - v_res2_age) : _zbox_fallback
 
     // ── Render Sup1 (best support zone) ──
     if v_sup1_top > 0 and v_sup1_bot > 0 and v_sup1_top > v_sup1_bot
@@ -1725,7 +1756,7 @@ if show_zones_v and use_engine_data and barstate.islast
         string _s1_st = f_zone_border_style(v_sup1_ztype)
         int   _s1_w       = f_zone_border_width(v_sup1_ztype)
         string _s1_tag = show_zone_tag ? f_zone_tag_text(v_sup1_ztype, v_sup1_score_d) : ""
-        _vis_z_sup1 := box.new(_zbox_left, v_sup1_top, bar_index + 5, v_sup1_bot,
+        _vis_z_sup1 := box.new(_s1_left, v_sup1_top, bar_index + 5, v_sup1_bot,
              border_color=_s1_border, bgcolor=_s1_bg,
              border_style=_s1_st, border_width=_s1_w, xloc=xloc.bar_index,
              text=_s1_tag, text_size=size.small, text_color=color.new(color.white, 10),
@@ -1733,8 +1764,8 @@ if show_zones_v and use_engine_data and barstate.islast
         // Glow lines for STRONG/BEST (score >= 80) — V287.1: dynamic offset
         if v_sup1_score_d >= 80.0
             float _s1_pad = f_glow_pad(v_sup1_top, v_sup1_bot)
-            _vis_glow_sup1_t := line.new(_zbox_left, v_sup1_top + _s1_pad, bar_index + 5, v_sup1_top + _s1_pad, color=color.new(_s1_base, 50), width=2, xloc=xloc.bar_index)
-            _vis_glow_sup1_b := line.new(_zbox_left, v_sup1_bot - _s1_pad, bar_index + 5, v_sup1_bot - _s1_pad, color=color.new(_s1_base, 50), width=2, xloc=xloc.bar_index)
+            _vis_glow_sup1_t := line.new(_s1_left, v_sup1_top + _s1_pad, bar_index + 5, v_sup1_top + _s1_pad, color=color.new(_s1_base, 50), width=2, xloc=xloc.bar_index)
+            _vis_glow_sup1_b := line.new(_s1_left, v_sup1_bot - _s1_pad, bar_index + 5, v_sup1_bot - _s1_pad, color=color.new(_s1_base, 50), width=2, xloc=xloc.bar_index)
 
     // ── Render Sup2 (second-best support zone) ──
     if v_sup2_top > 0 and v_sup2_bot > 0 and v_sup2_top > v_sup2_bot
@@ -1744,7 +1775,7 @@ if show_zones_v and use_engine_data and barstate.islast
         color _s2_border  = color.new(_s2_base, 30)
         string _s2_st = f_zone_border_style(v_sup2_ztype)
         string _s2_tag = show_zone_tag ? f_zone_tag_text(v_sup2_ztype, v_sup2_score_d) : ""
-        _vis_z_sup2 := box.new(_zbox_left, v_sup2_top, bar_index + 5, v_sup2_bot,
+        _vis_z_sup2 := box.new(_s2_left, v_sup2_top, bar_index + 5, v_sup2_bot,
              border_color=_s2_border, bgcolor=_s2_bg,
              border_style=_s2_st, border_width=1, xloc=xloc.bar_index,
              text=_s2_tag, text_size=size.tiny, text_color=color.new(color.white, 25),
@@ -1759,15 +1790,15 @@ if show_zones_v and use_engine_data and barstate.islast
         string _r1_st = f_zone_border_style(v_res1_ztype)
         int   _r1_w       = f_zone_border_width(v_res1_ztype)
         string _r1_tag = show_zone_tag ? f_zone_tag_text(v_res1_ztype, v_res1_score_d) : ""
-        _vis_z_res1 := box.new(_zbox_left, v_res1_top, bar_index + 5, v_res1_bot,
+        _vis_z_res1 := box.new(_r1_left, v_res1_top, bar_index + 5, v_res1_bot,
              border_color=_r1_border, bgcolor=_r1_bg,
              border_style=_r1_st, border_width=_r1_w, xloc=xloc.bar_index,
              text=_r1_tag, text_size=size.small, text_color=color.new(color.white, 10),
              text_halign=text.align_right, text_valign=text.align_bottom)
         if v_res1_score_d >= 80.0
             float _r1_pad = f_glow_pad(v_res1_top, v_res1_bot)
-            _vis_glow_res1_t := line.new(_zbox_left, v_res1_top + _r1_pad, bar_index + 5, v_res1_top + _r1_pad, color=color.new(_r1_base, 50), width=2, xloc=xloc.bar_index)
-            _vis_glow_res1_b := line.new(_zbox_left, v_res1_bot - _r1_pad, bar_index + 5, v_res1_bot - _r1_pad, color=color.new(_r1_base, 50), width=2, xloc=xloc.bar_index)
+            _vis_glow_res1_t := line.new(_r1_left, v_res1_top + _r1_pad, bar_index + 5, v_res1_top + _r1_pad, color=color.new(_r1_base, 50), width=2, xloc=xloc.bar_index)
+            _vis_glow_res1_b := line.new(_r1_left, v_res1_bot - _r1_pad, bar_index + 5, v_res1_bot - _r1_pad, color=color.new(_r1_base, 50), width=2, xloc=xloc.bar_index)
 
     // ── Render Res2 (second-best resistance zone) ──
     if v_res2_top > 0 and v_res2_bot > 0 and v_res2_top > v_res2_bot
@@ -1777,7 +1808,7 @@ if show_zones_v and use_engine_data and barstate.islast
         color _r2_border  = color.new(_r2_base, 30)
         string _r2_st = f_zone_border_style(v_res2_ztype)
         string _r2_tag = show_zone_tag ? f_zone_tag_text(v_res2_ztype, v_res2_score_d) : ""
-        _vis_z_res2 := box.new(_zbox_left, v_res2_top, bar_index + 5, v_res2_bot,
+        _vis_z_res2 := box.new(_r2_left, v_res2_top, bar_index + 5, v_res2_bot,
              border_color=_r2_border, bgcolor=_r2_bg,
              border_style=_r2_st, border_width=1, xloc=xloc.bar_index,
              text=_r2_tag, text_size=size.tiny, text_color=color.new(color.white, 25),

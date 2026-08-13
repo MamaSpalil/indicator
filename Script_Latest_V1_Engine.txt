@@ -99,6 +99,17 @@ f_ts(float v) => str.tostring(v)
 // V260: Score to tier string helper
 f_tier(float sc) => sc >= 100 ? "BEST" : sc >= 80 ? "STRONG" : sc >= 40 ? "NORMAL" : "PIVOT"
 
+// V291-fix: безопасная левая граница box/line по оси X.
+// Ранее зоны рисовались от «сырых» индексов (bar_index - N, last_sl_i, best_impulse_idx + 1),
+// которые на первых барах истории уходили в отрицательные значения, а при na-пивоте — в na.
+// TradingView в этом случае «отвязывает» box от бара: левый край схлопывается либо
+// уезжает к началу графика. Клампим индекс в валидный диапазон [0, bar_index].
+f_box_left(int idx) => math.max(0, math.min(bar_index, nz(idx, bar_index)))
+
+// V291: максимальный экспортируемый возраст зоны (бары). Ограничивает левый край
+// box в VISUAL и держит значение канала в безопасном диапазоне.
+MAX_ZONE_AGE_EXPORT = 4999
+
 // V260: Score emoji helper
 f_emoji(float sc) => sc >= 120 ? "🔥" : sc >= 100 ? "💎" : sc >= 80 ? "🟢" : sc >= 40 ? "⚪" : "⚓"
 
@@ -3879,7 +3890,7 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                     bool should_draw_box = show_fvg and has_fvg and not fvg_inside_ob
                     if should_draw_box
                         if not na(found_ft) and not na(found_fb)
-                            bx := box.new(draw_start, found_ft, bar_index + 5, found_fb,
+                            bx := box.new(f_box_left(draw_start), found_ft, bar_index + 5, found_fb,
                                  border_color=na,
                                  bgcolor=f_fvg_color(final_score, is_bull),
                                  xloc=xloc.bar_index)
@@ -4530,7 +4541,7 @@ f_create_new_zones() =>
             if not na(pm_b) and use_smart_piv
                 full_log := f_safe_append(full_log, "\n" + pm_b.debug_info)
             if (bar_index - last_sl_i) < math.min(p_max_history, MAX_BUFF)
-                box bx_new = box.new(last_sl_i, t_b, bar_index + 5, b_b,
+                box bx_new = box.new(f_box_left(last_sl_i), t_b, bar_index + 5, b_b,
                      border_color=f_zone_bd(c_sup_base),
                      bgcolor=f_zone_bg(c_sup_base, f_score_to_transp(s_b)),
                      xloc=xloc.bar_index)
@@ -4642,7 +4653,7 @@ f_create_new_zones() =>
             if not na(pm_s) and use_smart_piv
                 full_log := f_safe_append(full_log, "\n" + pm_s.debug_info)
             if (bar_index - last_sh_i) < math.min(p_max_history, MAX_BUFF)
-                box bx_new = box.new(last_sh_i, t_s, bar_index + 5, b_s,
+                box bx_new = box.new(f_box_left(last_sh_i), t_s, bar_index + 5, b_s,
                      border_color=f_zone_bd(c_res_base),
                      bgcolor=f_zone_bg(c_res_base, f_score_to_transp(s_s)),
                      xloc=xloc.bar_index)
@@ -4782,7 +4793,7 @@ f_create_new_zones() =>
                         float rz_bot = rz_l
                         if (rz_top - rz_bot) >= syminfo.mintick * 2 and (bar_index - last_sl_i) < math.min(p_max_history, MAX_BUFF)
                             string rz_tier = f_tier(rz_score)
-                            box bx_rz = box.new(last_sl_i, rz_top, bar_index + 5, rz_bot,
+                            box bx_rz = box.new(f_box_left(last_sl_i), rz_top, bar_index + 5, rz_bot,
                                  border_color = color.new(c_rz_bull, 0),
                                  bgcolor      = f_zone_bg(c_rz_bull, f_score_to_transp(rz_score)),
                                  border_style = line.style_dotted,
@@ -4856,7 +4867,7 @@ f_create_new_zones() =>
                         float rz_bot_s = body_top_s
                         if (rz_top_s - rz_bot_s) >= syminfo.mintick * 2 and (bar_index - last_sh_i) < math.min(p_max_history, MAX_BUFF)
                             string rz_tier_s = f_tier(rz_score_s)
-                            box bx_rz_s = box.new(last_sh_i, rz_top_s, bar_index + 5, rz_bot_s,
+                            box bx_rz_s = box.new(f_box_left(last_sh_i), rz_top_s, bar_index + 5, rz_bot_s,
                                  border_color = color.new(c_rz_bear, 0),
                                  bgcolor      = f_zone_bg(c_rz_bear, f_score_to_transp(rz_score_s)),
                                  border_style = line.style_dotted,
@@ -4908,12 +4919,13 @@ f_create_new_zones() =>
                             imb_l := imb_h - imb_max_h
                     string imb_tier = f_tier(_imb_score)
                     color imb_col = c_imb_base
-                    box bx_imb = box.new(bar_index - imb_win + 1, imb_h, bar_index + 5, imb_l,
+                    int imb_left = f_box_left(bar_index - imb_win + 1)
+                    box bx_imb = box.new(imb_left, imb_h, bar_index + 5, imb_l,
                          border_color = color.new(imb_col, 0),
                          bgcolor = f_zone_bg(imb_col, f_score_to_transp(_imb_score)),
                          border_style = line.style_dashed,
                          xloc = xloc.bar_index)
-                    Zone imb_z = f_make_zone(bar_index, imb_h, imb_l, _imb_bull, "IMB", _imb_score, imb_tier, na, (imb_h + imb_l) / 2.0, bx_imb, na, "None", "IMB Delta=" + str.tostring(_imb_delta, "#.0"), "")
+                    Zone imb_z = f_make_zone(imb_left, imb_h, imb_l, _imb_bull, "IMB", _imb_score, imb_tier, na, (imb_h + imb_l) / 2.0, bx_imb, na, "None", "IMB Delta=" + str.tostring(_imb_delta, "#.0"), "")
                     array.push(zone_db, imb_z)
 
         // ── V279/V287: Accumulation/Distribution Zones (with absolute MIN_SCORE_ACC) ─
@@ -4932,12 +4944,13 @@ f_create_new_zones() =>
                     string acc_type = _pre_is_acc ? "ACC" : "DST"
                     string acc_tier = f_tier(_pre_acc_score)
                     color acc_col = c_acc_base
-                    box bx_acc = box.new(bar_index - inp_acc_min_bars, _pre_acc_h, bar_index + 5, _pre_acc_l,
+                    int acc_left = f_box_left(bar_index - inp_acc_min_bars)
+                    box bx_acc = box.new(acc_left, _pre_acc_h, bar_index + 5, _pre_acc_l,
                          border_color = color.new(acc_col, 0),
                          bgcolor = f_zone_bg(acc_col, f_score_to_transp(_pre_acc_score)),
                          border_style = line.style_dotted,
                          xloc = xloc.bar_index)
-                    Zone acc_z = f_make_zone(bar_index, _pre_acc_h, _pre_acc_l, _pre_is_acc, acc_type, _pre_acc_score, acc_tier, na, (_pre_acc_h + _pre_acc_l) / 2.0, bx_acc, na, "None", acc_type + " Score=" + str.tostring(_pre_acc_score, "#.0"), "Wyckoff")
+                    Zone acc_z = f_make_zone(acc_left, _pre_acc_h, _pre_acc_l, _pre_is_acc, acc_type, _pre_acc_score, acc_tier, na, (_pre_acc_h + _pre_acc_l) / 2.0, bx_acc, na, "None", acc_type + " Score=" + str.tostring(_pre_acc_score, "#.0"), "Wyckoff")
                     array.push(zone_db, acc_z)
 
         // ── V279/V287: VCP Zones (with absolute MIN_SCORE_VCP) ────────────
@@ -4953,12 +4966,13 @@ f_create_new_zones() =>
                     // V290-fix: направление VCP-зоны бралось жёстко как is_bull=true, поэтому
                     // VCP всегда попадала в слот поддержки при экспорте и не могла быть
                     // сопротивлением. VCP направления не имеет — берём контекст HTF-тренда.
-                    box bx_vcp = box.new(bar_index - 10, _pre_vcp_h, bar_index + 5, _pre_vcp_l,
+                    int vcp_left = f_box_left(bar_index - 10)
+                    box bx_vcp = box.new(vcp_left, _pre_vcp_h, bar_index + 5, _pre_vcp_l,
                          border_color = color.new(c_vcp_base, 0),
                          bgcolor = f_zone_bg(c_vcp_base, f_score_to_transp(_pre_vcp_score)),
                          border_style = line.style_dashed,
                          xloc = xloc.bar_index)
-                    Zone vcp_z = f_make_zone(bar_index, _pre_vcp_h, _pre_vcp_l, global_bull, "VCP", _pre_vcp_score, vcp_tier, na, (_pre_vcp_h + _pre_vcp_l) / 2.0, bx_vcp, na, "None", vcp_info + " Score=" + str.tostring(_pre_vcp_score, "#.0"), vcp_info)
+                    Zone vcp_z = f_make_zone(vcp_left, _pre_vcp_h, _pre_vcp_l, global_bull, "VCP", _pre_vcp_score, vcp_tier, na, (_pre_vcp_h + _pre_vcp_l) / 2.0, bx_vcp, na, "None", vcp_info + " Score=" + str.tostring(_pre_vcp_score, "#.0"), vcp_info)
                     array.push(zone_db, vcp_z)
 
         // ── V279/V287: Multi-Bar Rejection (with absolute MIN_SCORE_MBR) ──
@@ -4981,12 +4995,13 @@ f_create_new_zones() =>
                     if (mbr_b_top - mbr_b_bot) < syminfo.mintick * 2
                         mbr_b_top := mbr_b_bot + syminfo.mintick * 2
                     string mbr_b_tier = f_tier(_pre_mbr_b_score)
-                    box bx_mbr_b = box.new(bar_index - 8, mbr_b_top, bar_index + 5, mbr_b_bot,
+                    int mbr_b_left = f_box_left(bar_index - 8)
+                    box bx_mbr_b = box.new(mbr_b_left, mbr_b_top, bar_index + 5, mbr_b_bot,
                          border_color = color.new(c_rz_bull, 30),
                          bgcolor = f_zone_bg(c_rz_bull, f_score_to_transp(_pre_mbr_b_score)),
                          border_style = line.style_dotted,
                          xloc = xloc.bar_index)
-                    Zone mbr_b = f_make_zone(bar_index, mbr_b_top, mbr_b_bot, true, "MBR", _pre_mbr_b_score, mbr_b_tier, na, (mbr_b_top + mbr_b_bot) / 2.0, bx_mbr_b, na, "None", "MBR×" + str.tostring(_pre_mbr_b_count), "MultiRej")
+                    Zone mbr_b = f_make_zone(mbr_b_left, mbr_b_top, mbr_b_bot, true, "MBR", _pre_mbr_b_score, mbr_b_tier, na, (mbr_b_top + mbr_b_bot) / 2.0, bx_mbr_b, na, "None", "MBR×" + str.tostring(_pre_mbr_b_count), "MultiRej")
                     array.push(zone_db, mbr_b)
             // Bear multi-bar rejection
             if _pre_mbr_s_valid and _pre_mbr_s_score >= math.max(float(p_min_score) * 0.6, MIN_SCORE_MBR)
@@ -5006,12 +5021,13 @@ f_create_new_zones() =>
                     if (mbr_s_top - mbr_s_bot) < syminfo.mintick * 2
                         mbr_s_top := mbr_s_bot + syminfo.mintick * 2
                     string mbr_s_tier = f_tier(_pre_mbr_s_score)
-                    box bx_mbr_s = box.new(bar_index - 8, mbr_s_top, bar_index + 5, mbr_s_bot,
+                    int mbr_s_left = f_box_left(bar_index - 8)
+                    box bx_mbr_s = box.new(mbr_s_left, mbr_s_top, bar_index + 5, mbr_s_bot,
                          border_color = color.new(c_rz_bear, 30),
                          bgcolor = f_zone_bg(c_rz_bear, f_score_to_transp(_pre_mbr_s_score)),
                          border_style = line.style_dotted,
                          xloc = xloc.bar_index)
-                    Zone mbr_s = f_make_zone(bar_index, mbr_s_top, mbr_s_bot, false, "MBR", _pre_mbr_s_score, mbr_s_tier, na, (mbr_s_top + mbr_s_bot) / 2.0, bx_mbr_s, na, "None", "MBR×" + str.tostring(_pre_mbr_s_count), "MultiRej")
+                    Zone mbr_s = f_make_zone(mbr_s_left, mbr_s_top, mbr_s_bot, false, "MBR", _pre_mbr_s_score, mbr_s_tier, na, (mbr_s_top + mbr_s_bot) / 2.0, bx_mbr_s, na, "None", "MBR×" + str.tostring(_pre_mbr_s_count), "MultiRej")
                     array.push(zone_db, mbr_s)
 
 f_mng() =>
@@ -5771,6 +5787,12 @@ string _exp_res1_type = "OB", string _exp_res1_tier = "PIVOT"
 float  _exp_res1_score = 0.0,  bool _exp_res1_prop = false
 string _exp_res2_type = "OB", string _exp_res2_tier = "PIVOT"
 float  _exp_res2_score = 0.0,  bool _exp_res2_prop = false
+// V291: возраст зоны в барах (bar_index - origin_idx). Нужен VISUAL, чтобы привязать
+// левый край box к бару формирования зоны, а не к фиксированному bar_index - 200.
+int _exp_sup1_age = 0
+int _exp_sup2_age = 0
+int _exp_res1_age = 0
+int _exp_res2_age = 0
 
 if array.size(zone_db) > 0
     float _best_sup1_pri = -1.0
@@ -5794,6 +5816,8 @@ if array.size(zone_db) > 0
         // proximity_weight = exp(-dist / (3 × ATR)): full weight at touch, 5% at 9 ATR
         float _proximity = math.exp(-_zdist / (3.0 * _atr_safe))
         float _zpriority = f_effective_score(z) * _proximity
+        // V291: возраст = сколько баров назад сформирована зона (для привязки box к бару)
+        int _zage = math.max(0, math.min(MAX_ZONE_AGE_EXPORT, bar_index - nz(z.origin_idx, bar_index)))
         if z.is_bull  // Support side
             if _zpriority > _best_sup1_pri
                 // shift Top1 → Top2
@@ -5804,6 +5828,7 @@ if array.size(zone_db) > 0
                 _exp_sup2_tier := _exp_sup1_tier
                 _exp_sup2_score := _exp_sup1_score
                 _exp_sup2_prop := _exp_sup1_prop
+                _exp_sup2_age  := _exp_sup1_age
                 // new Top1
                 _best_sup1_pri := _zpriority
                 _exp_sup1_top  := z.top
@@ -5812,6 +5837,7 @@ if array.size(zone_db) > 0
                 _exp_sup1_tier := z.tier
                 _exp_sup1_score := z.score
                 _exp_sup1_prop := z.is_propulsion
+                _exp_sup1_age  := _zage
             else if _zpriority > _best_sup2_pri
                 _best_sup2_pri := _zpriority
                 _exp_sup2_top  := z.top
@@ -5820,6 +5846,7 @@ if array.size(zone_db) > 0
                 _exp_sup2_tier := z.tier
                 _exp_sup2_score := z.score
                 _exp_sup2_prop := z.is_propulsion
+                _exp_sup2_age  := _zage
         else  // Resistance side
             if _zpriority > _best_res1_pri
                 _best_res2_pri := _best_res1_pri
@@ -5829,6 +5856,7 @@ if array.size(zone_db) > 0
                 _exp_res2_tier := _exp_res1_tier
                 _exp_res2_score := _exp_res1_score
                 _exp_res2_prop := _exp_res1_prop
+                _exp_res2_age  := _exp_res1_age
                 _best_res1_pri := _zpriority
                 _exp_res1_top  := z.top
                 _exp_res1_bot  := z.bot
@@ -5836,6 +5864,7 @@ if array.size(zone_db) > 0
                 _exp_res1_tier := z.tier
                 _exp_res1_score := z.score
                 _exp_res1_prop := z.is_propulsion
+                _exp_res1_age  := _zage
             else if _zpriority > _best_res2_pri
                 _best_res2_pri := _zpriority
                 _exp_res2_top  := z.top
@@ -5844,6 +5873,7 @@ if array.size(zone_db) > 0
                 _exp_res2_tier := z.tier
                 _exp_res2_score := z.score
                 _exp_res2_prop := z.is_propulsion
+                _exp_res2_age  := _zage
 
 // V286: _equity_curve moved to VISUAL (uses v_equity = sim_equity already exported as ENG: Equity)
 
@@ -5861,6 +5891,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 //    V286: Moved 8 dashboard-only channels to VISUAL (Equity Curve, Stoch Mu/Sigma/Eta,
 //    Kelly F, Sharpe, Sortino, MC DD95). VISUAL computes these locally.
 //    V287: +5 channels (Sup1/Sup2/Res1/Res2 Meta + Cnt Other) = 60 / 64.
+//    V291: +4 channels (Sup1/Sup2/Res1/Res2 Age) = 59 plot() слотов / 64.
 // ВАЖНО: Порядок plot() каналов ДОЛЖЕН совпадать с порядком input.source() в VISUAL!
 // При добавлении VISUAL поверх ENGINE, TradingView auto-assign первый plot → первый input.
 // display=display.all (default) + color 100% transparent → невидимы на графике,
@@ -5870,7 +5901,7 @@ float _eng_bos  = major_bull_trend ? 1 : 0
 // Стратегия: closedtrades, wintrades, equity, dd%, P&L.
 // Авто-параметры: пивоты, cluster, inv_dist, FVG, confluence (из Auto-Tuner).
 // ── Канал #1: Version — должен быть ПЕРВЫМ для автоопределения в VISUAL ──
-plot(287.0,                              "ENG: Version",      color=color.new(#000000, 100))
+plot(288.0,                              "ENG: Version",      color=color.new(#000000, 100))
 // ── Каналы данных (порядок = input.source() порядок в VISUAL) ──
 plot(nz(z_score, 0.0),                   "ENG: Z-Score",      color=color.new(#000000, 100))
 plot(nz(rvol, 0.0),                      "ENG: RVOL",         color=color.new(#000000, 100))
@@ -5940,6 +5971,12 @@ plot(f_encode_zone_meta(_exp_res1_type, _exp_res1_tier, _exp_res1_score, _exp_re
 plot(f_encode_zone_meta(_exp_res2_type, _exp_res2_tier, _exp_res2_score, _exp_res2_prop, false), "ENG: Res2 Meta",    color=color.new(#000000, 100))
 // V287: Count of "other" zone types (IMB+ACC+DST+VCP+MBR) — separate from sup/res/bb/rz
 plot(nz(float(cnt_other), 0.0),           "ENG: Cnt Other",    color=color.new(#000000, 100))
+// V291: Возраст экспортируемых зон (в барах). VISUAL строит левый край box как
+// bar_index - age, благодаря чему зона привязана к бару своего формирования.
+plot(float(_exp_sup1_age),                "ENG: Sup1 Age",     color=color.new(#000000, 100))
+plot(float(_exp_sup2_age),                "ENG: Sup2 Age",     color=color.new(#000000, 100))
+plot(float(_exp_res1_age),                "ENG: Res1 Age",     color=color.new(#000000, 100))
+plot(float(_exp_res2_age),                "ENG: Res2 Age",     color=color.new(#000000, 100))
 // V280: PD visualization moved to VISUAL
 // ── VWAP visible plot (после всех ENG: каналов, чтобы не сбивать auto-assign порядок) ──
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
