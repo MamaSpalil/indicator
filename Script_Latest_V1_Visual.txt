@@ -474,7 +474,7 @@ eng_zones_rz     = input.source(close, "VIS: Zones RZ",     tooltip="→ ENG: Zo
 eng_safe_pv      = input.source(close, "VIS: Safe PV",      tooltip="→ ENG: Safe PV | Диапазон: ≥1.0. Point Value для фьючерсов", group=group_eng)
 eng_vol_ratio    = input.source(close, "VIS: Vol Ratio",    tooltip="→ ENG: Vol Ratio | Диапазон: 0.3-3.0. ATR/ATR_slow волатильность", group=group_eng)
 eng_htf_vol      = input.source(close, "VIS: HTF Vol",      tooltip="→ ENG: HTF Vol | Диапазон: 0.5-3.0. HTF волатильность контекст", group=group_eng)
-eng_max_hist     = input.source(close, "VIS: Max Hist",     tooltip="→ ENG: Max Hist | Диапазон: 500-4999. Глубина истории в барах", group=group_eng)
+eng_max_hist     = input.source(close, "VIS: Max Hist",     tooltip="→ ENG: Max Hist | Диапазон: 500-999. Глубина истории в барах", group=group_eng)
 // V280: Pivot L/R Sup/Res, OB Len Sup/Res, Cluster Tol, Inv Dist Sup/Res — removed from ENGINE, using local fallback
 eng_fvg_min      = input.source(close, "VIS: FVG Min",      tooltip="→ ENG: FVG Min | Диапазон: 0.0001-5.0 (×ATR). Минимальный FVG", group=group_eng)
 eng_fvg_max      = input.source(close, "VIS: FVG Max",      tooltip="→ ENG: FVG Max | Диапазон: 0.5-20.0 (×ATR). Максимальный FVG", group=group_eng)
@@ -551,7 +551,7 @@ float v_dd_pct       = use_engine_data ? eng_dd_pct       : src_dd_pct
 // V278: Sanity check — zone counts above max are impossible (likely close price from unconnected channel)
 int   _MAX_ZONE_COUNT = 500  // TradingView max_boxes_count limit; any count above this is invalid
 // V291: верхняя граница возраста зоны (совпадает с MAX_ZONE_AGE_EXPORT в ENGINE)
-int   _MAX_ZONE_AGE   = 4999
+int   _MAX_ZONE_AGE   = 999
 int   _raw_cnt_sup   = math.round(use_engine_data ? eng_zones_sup    : src_zones_sup)
 int   _raw_cnt_res   = math.round(use_engine_data ? eng_zones_res    : src_zones_res)
 int   _raw_cnt_bb    = math.round(use_engine_data ? eng_zones_bb     : src_zones_bb)
