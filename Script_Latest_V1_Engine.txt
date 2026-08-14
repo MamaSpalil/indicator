@@ -891,15 +891,27 @@ float htf_vol_ctx_c = math.max(0.5, math.min(3.0, htf_vol_ctx))
 // V295: из запроса убран `close` старшего ТФ — на текущем (незакрытом) баре он
 // совпадает с `close` графика, поэтому запрашивалась лишняя серия. Было 6 запросов
 // по 2 серии (12 серий), стало 6 запросов по 1 серии.
-f_dash_tf(simple string tf) =>
-    request.security(syminfo.tickerid, tf, ta.ema(close, dash_ema_len), lookahead=barmerge.lookahead_off)
+// V298: request.security для дашборда убраны полностью. Каждый вызов
+// request.security компилируется TradingView как отдельная подпрограмма со своим
+// проходом по истории; шесть таких запросов, добавленных в V291/V292 поверх уже
+// существующих (calc_tf, calc_itf, "D"), и держали компиляцию ENGINE за пределом
+// лимита времени («Pine compilation was timed out») — сокращения V293/V295/V296/V297
+// уменьшали объём запросов, но не их количество.
+// EMA(dash_ema_len) старшего ТФ эквивалентна EMA текущего графика с периодом,
+// умноженным на отношение длительностей баров: одна и та же длина окна во времени
+// даёт ту же сглаженную линию, а дашборду нужен именно знак «цена выше/ниже EMA ТФ».
+// Дополнительных серий и подпрограмм это не создаёт.
+simple float _chart_sec = math.max(timeframe.in_seconds(timeframe.period), 1)
+// Возвращает simple int: ta.ema() принимает длину только этого квалификатора.
+f_dash_len(simple string tf) =>
+    int(math.max(1, math.min(4999, math.round(dash_ema_len * timeframe.in_seconds(tf) / _chart_sec))))
 
-float _d1_e   = f_dash_tf("1")
-float _d5_e   = f_dash_tf("5")
-float _d15_e  = f_dash_tf("15")
-float _d60_e  = f_dash_tf("60")
-float _d240_e = f_dash_tf("240")
-float _dD_e   = f_dash_tf("D")
+float _d1_e   = ta.ema(close, f_dash_len("1"))
+float _d5_e   = ta.ema(close, f_dash_len("5"))
+float _d15_e  = ta.ema(close, f_dash_len("15"))
+float _d60_e  = ta.ema(close, f_dash_len("60"))
+float _d240_e = ta.ema(close, f_dash_len("240"))
+float _dD_e   = ta.ema(close, f_dash_len("D"))
 
 // Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
 f_dash_dir(float e) =>
@@ -5993,7 +6005,7 @@ alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi
 // ── V291: БЛОК 11 — MTF DASHBOARD ─────────────────────────────────────────
 // Дашборд направления тренда по таймфреймам (1m → 1D) и расстояния (в тиках)
 // до смены направления рынка. Таблицы не расходуют 64 output-слота plot().
-// V292: входы, request.security и f_dash_dir перенесены в БЛОК 2 (MTF-консенсус),
+// V292: входы, расчёт EMA по ТФ и f_dash_dir перенесены в БЛОК 2 (MTF-консенсус),
 // так как их использует фильтр надёжности зон, работающий раньше по коду.
 
 // Количество тиков до смены направления = дистанция цены до EMA данного ТФ.
