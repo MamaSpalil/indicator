@@ -914,9 +914,10 @@ htf_vol_ctx := htf_vol_ctx == 0.0 ? 1.0 : htf_vol_ctx
 float htf_vol_ctx_c = math.max(0.5, math.min(3.0, htf_vol_ctx))
 
 // V273: Previous day High/Low/Close for confluence scoring
-float prev_day_high  = request.security(syminfo.tickerid, "D", high[1],  lookahead=barmerge.lookahead_on)
-float prev_day_low   = request.security(syminfo.tickerid, "D", low[1],   lookahead=barmerge.lookahead_on)
-float prev_day_close = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+// V295: три отдельных дневных запроса объединены в один кортежный —
+// TradingView компилирует каждый request.security как отдельную подпрограмму,
+// и их количество было главной причиной «Pine compilation was timed out».
+[prev_day_high, prev_day_low, prev_day_close] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead=barmerge.lookahead_on)
 
 // ── V292: MTF-консенсус направления (1m → 1D) ─────────────────────────────
 // Единый источник данных для дашборда (БЛОК 11) и для фильтра надёжности зон.
@@ -929,27 +930,30 @@ float prev_day_close = request.security(syminfo.tickerid, "D", close[1], lookahe
 // TradingView («Pine compilation was timed out»). Флэт теперь определяется по
 // расстоянию цены до EMA своего ТФ в ATR текущего графика — дополнительных
 // серий это не требует.
+// V295: из запроса убран `close` старшего ТФ — на текущем (незакрытом) баре он
+// совпадает с `close` графика, поэтому запрашивалась лишняя серия. Было 6 запросов
+// по 2 серии (12 серий), стало 6 запросов по 1 серии.
 f_dash_tf(simple string tf) =>
-    request.security(syminfo.tickerid, tf, [close, ta.ema(close, dash_ema_len)], lookahead=barmerge.lookahead_off)
+    request.security(syminfo.tickerid, tf, ta.ema(close, dash_ema_len), lookahead=barmerge.lookahead_off)
 
-[_d1_c,   _d1_e  ] = f_dash_tf("1")
-[_d5_c,   _d5_e  ] = f_dash_tf("5")
-[_d15_c,  _d15_e ] = f_dash_tf("15")
-[_d60_c,  _d60_e ] = f_dash_tf("60")
-[_d240_c, _d240_e] = f_dash_tf("240")
-[_dD_c,   _dD_e  ] = f_dash_tf("D")
+float _d1_e   = f_dash_tf("1")
+float _d5_e   = f_dash_tf("5")
+float _d15_e  = f_dash_tf("15")
+float _d60_e  = f_dash_tf("60")
+float _d240_e = f_dash_tf("240")
+float _dD_e   = f_dash_tf("D")
 
 // Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
-f_dash_dir(float c, float e) =>
+f_dash_dir(float e) =>
     float _flat_gap = dash_flat_atr * math.max(atr_val, syminfo.mintick)
-    na(c) or na(e) ? 0 : math.abs(c - e) < _flat_gap ? 0 : c > e ? 1 : -1
+    na(e) ? 0 : math.abs(close - e) < _flat_gap ? 0 : close > e ? 1 : -1
 
-int mtf_dir_1   = f_dash_dir(_d1_c,   _d1_e)
-int mtf_dir_5   = f_dash_dir(_d5_c,   _d5_e)
-int mtf_dir_15  = f_dash_dir(_d15_c,  _d15_e)
-int mtf_dir_60  = f_dash_dir(_d60_c,  _d60_e)
-int mtf_dir_240 = f_dash_dir(_d240_c, _d240_e)
-int mtf_dir_D   = f_dash_dir(_dD_c,   _dD_e)
+int mtf_dir_1   = f_dash_dir(_d1_e)
+int mtf_dir_5   = f_dash_dir(_d5_e)
+int mtf_dir_15  = f_dash_dir(_d15_e)
+int mtf_dir_60  = f_dash_dir(_d60_e)
+int mtf_dir_240 = f_dash_dir(_d240_e)
+int mtf_dir_D   = f_dash_dir(_dD_e)
 
 // Взвешенный консенсус [-1..1]: старший ТФ весомее младшего (1,1,2,3,4,5 → сумма 16).
 float mtf_bias = (mtf_dir_1 + mtf_dir_5 + 2 * mtf_dir_15 + 3 * mtf_dir_60 + 4 * mtf_dir_240 + 5 * mtf_dir_D) / 16.0
@@ -6200,8 +6204,8 @@ alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi
 
 // Количество тиков до смены направления = дистанция цены до EMA данного ТФ.
 // Пробой EMA переворачивает знак направления, поэтому это и есть «запас хода».
-f_dash_ticks(float c, float e) =>
-    float _ticks = na(c) or na(e) or syminfo.mintick <= 0 ? na : math.round(math.abs(c - e) / syminfo.mintick)
+f_dash_ticks(float e) =>
+    float _ticks = na(e) or syminfo.mintick <= 0 ? na : math.round(math.abs(close - e) / syminfo.mintick)
     _ticks
 
 var table dash_tbl = na
@@ -6219,7 +6223,7 @@ if dash_show and barstate.islast
 
     array<string> _tf_names = array.from("1m", "5m", "15m", "1H", "4H", "1D")
     array<int>    _tf_dirs  = array.from(mtf_dir_1, mtf_dir_5, mtf_dir_15, mtf_dir_60, mtf_dir_240, mtf_dir_D)
-    array<float>  _tf_ticks = array.from(f_dash_ticks(_d1_c, _d1_e), f_dash_ticks(_d5_c, _d5_e), f_dash_ticks(_d15_c, _d15_e), f_dash_ticks(_d60_c, _d60_e), f_dash_ticks(_d240_c, _d240_e), f_dash_ticks(_dD_c, _dD_e))
+    array<float>  _tf_ticks = array.from(f_dash_ticks(_d1_e), f_dash_ticks(_d5_e), f_dash_ticks(_d15_e), f_dash_ticks(_d60_e), f_dash_ticks(_d240_e), f_dash_ticks(_dD_e))
 
     int   _sum_dir  = 0
     float _min_tick = na
