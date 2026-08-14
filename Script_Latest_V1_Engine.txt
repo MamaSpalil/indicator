@@ -6201,7 +6201,8 @@ alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi
 // Количество тиков до смены направления = дистанция цены до EMA данного ТФ.
 // Пробой EMA переворачивает знак направления, поэтому это и есть «запас хода».
 f_dash_ticks(float c, float e) =>
-    na(c) or na(e) or syminfo.mintick <= 0 ? na : math.round(math.abs(c - e) / syminfo.mintick)
+    float _ticks = na(c) or na(e) or syminfo.mintick <= 0 ? na : math.round(math.abs(c - e) / syminfo.mintick)
+    _ticks
 
 var table dash_tbl = na
 if dash_show and barstate.islast
