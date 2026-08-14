@@ -16,8 +16,7 @@ float SIM_INITIAL_CAPITAL = 1000.0
 // ==========================================
 // Жёсткий потолок для ЛЮБОГО обращения к series[offset]
 // max_bars_back резервирует 4999, последний доступный индекс = 4998
-int MAX_BUFF     = 4999   // для max_bars_back()
-int BUF_FLAGS    = 1500    // для флагов/счётчиков, не требующих глубокой истории
+int MAX_BUFF     = 4999   // потолок глубины истории (max_bars_back=5000 → индекс 4998)
 int MAX_OFFSET   = 4998   // максимальный безопасный series[offset]
 int MAX_OFFSET_2 = 4997   // для функций требующих [offset+1]
 int MAX_OFFSET_3 = 4996   // для функций требующих [offset+2]
@@ -784,12 +783,8 @@ p_max_history := math.min(p_max_history, MAX_BUFF)
 // ==========================================
 // БЛОК 3: SESSION LOGIC & ADAPTIVE MACRO VOLUME
 // ==========================================
-int BUF_OHLCV = 4999
-int BUF_STATS = 1000
-int BUF_TREND = 800
 float _raw_gvs       = ta.sma(volume, p_glob_vol_len)
 float global_vol_sma = na(_raw_gvs) ? 0.0 : _raw_gvs
-max_bars_back(global_vol_sma, BUF_STATS)
 
 f_in_session(string sess_spec) =>
     string tz = sess_timezone == "" ? syminfo.timezone : sess_timezone
@@ -806,80 +801,47 @@ bool in_brokezone = kz_asia or kz_london or kz_ny or kz_overlap
 // ==========================================
 // БЛОК 4: MATH & STATS CORE + TRUE SMC PIVOTS
 // ==========================================
-// ── V253/V256-fix: дифференцированные буферы по фактической потребности ──
-// V253/V256-fix: дифференцированные буферы — const int литералы для max_bars_back()
-// Анкеры: форсируем расширение буфера для OHLCV
-// V273-fix: max_bars_back() allocates the buffer; force-reads inside guard are
-// redundant safety anchors that confirm the buffer is accessible at MAX_OFFSET.
-// On early bars (bar_index < MAX_OFFSET) the reads are skipped to avoid crash.
-max_bars_back(high,   MAX_BUFF)
-max_bars_back(low,    MAX_BUFF)
-max_bars_back(close,  MAX_BUFF)
-max_bars_back(open,   MAX_BUFF)
-max_bars_back(volume, MAX_BUFF)
-if bar_index >= MAX_OFFSET
-    float _force_high = high[MAX_OFFSET]
-    float _force_low  = low[MAX_OFFSET]
-    float _force_cls  = close[MAX_OFFSET]
-    float _force_opn  = open[MAX_OFFSET]
-    float _force_vol  = volume[MAX_OFFSET]
-
+// V296: индивидуальные max_bars_back() и «якорные» force-чтения истории удалены.
+// Параметр max_bars_back=5000 в indicator() уже резервирует буфер для ВСЕХ переменных
+// скрипта, поэтому 55 отдельных вызовов max_bars_back() лишь раздували объём
+// компилируемого кода и приводили к «Pine compilation was timed out».
 bool in_window = not use_date or (time >= t_start and time <= t_end)
 
 float _raw_atr = ta.atr(atr_len)
 float atr_val  = na(_raw_atr) ? syminfo.mintick : _raw_atr
-max_bars_back(atr_val, MAX_BUFF)
-float _force_atr = atr_val[MAX_OFFSET]
 float body_sz    = math.abs(close - open)
-max_bars_back(body_sz, BUF_STATS)
 
 float sma_val    = ta.sma(body_sz, p_z_len)
-max_bars_back(sma_val, BUF_STATS)
 
 float body_mean  = na(sma_val) ? 0.0 : sma_val
-max_bars_back(body_mean, BUF_STATS)
 
 float stdev_val  = ta.stdev(body_sz, p_z_len)
-max_bars_back(stdev_val, BUF_STATS)
 
 float body_stdev = na(stdev_val) or stdev_val == 0 ? math.max(syminfo.mintick, atr_val * 0.01) : stdev_val
-max_bars_back(body_stdev, BUF_STATS)
 
 float z_score    = f_safe_div(body_sz - body_mean, body_stdev)
-max_bars_back(z_score, BUF_STATS)
 
 float ema_vol  = ta.ema(volume, p_vol_len)
-max_bars_back(ema_vol, BUF_STATS)
 
 float vol_mean = na(ema_vol) or ema_vol == 0 ? 1.0 : ema_vol
-max_bars_back(vol_mean, BUF_STATS)
 
 float rvol     = f_safe_div(volume, vol_mean)
-max_bars_back(rvol, BUF_STATS)
 
 bool vol_valid  = not use_vol_flt or (rvol > 1.0)
-max_bars_back(vol_valid, BUF_FLAGS)
 float _raw_rsi  = ta.rsi(close, inp_rsi_len)
 float rsi_val   = na(_raw_rsi) ? 50.0 : _raw_rsi
-max_bars_back(rsi_val, BUF_STATS)
-
-// ── in_brokezone тоже нуждается в max_bars_back ──
-max_bars_back(in_brokezone, BUF_FLAGS)
 
 f_adx(int l) =>
     [dp, dm, v] = ta.dmi(l, l)
     v
 
-[htf_ema, htf_adx] = request.security(syminfo.tickerid, calc_tf,  [ta.ema(close, p_ema_len), f_adx(inp_adx_len)], lookahead=barmerge.lookahead_off)
+// V296: HTF ATR запрашивается тем же кортежным вызовом, что EMA и ADX старшего ТФ —
+// раньше это был третий отдельный request.security на тот же calc_tf.
+[htf_ema, htf_adx, htf_atr_raw] = request.security(syminfo.tickerid, calc_tf,  [ta.ema(close, p_ema_len), f_adx(inp_adx_len), ta.atr(atr_len)], lookahead=barmerge.lookahead_off)
 [itf_ema, itf_adx] = request.security(syminfo.tickerid, calc_itf, [ta.ema(close, math.min(p_ema_len, 50)), f_adx(inp_adx_len)], lookahead=barmerge.lookahead_off)
-max_bars_back(htf_ema, BUF_TREND)
-max_bars_back(htf_adx, BUF_TREND)
-max_bars_back(itf_ema, BUF_TREND)
-max_bars_back(itf_adx, BUF_TREND)
 
 float _raw_vwap = ta.vwap(hlc3)
 float vwap_val  = na(_raw_vwap) ? close : _raw_vwap
-max_bars_back(vwap_val, BUF_TREND)
 
 bool global_bull = close > htf_ema
 bool global_bear = close < htf_ema
@@ -888,25 +850,15 @@ bool itf_bull    = close > itf_ema
 bool itf_bear    = close < itf_ema
 bool vwap_bull_ok = not use_vwap or close > vwap_val
 bool vwap_bear_ok = not use_vwap or close < vwap_val
-max_bars_back(global_bull,  BUF_FLAGS)
-max_bars_back(global_bear,  BUF_FLAGS)
-max_bars_back(global_flat,  BUF_FLAGS)
-max_bars_back(itf_bull,     BUF_FLAGS)
-max_bars_back(itf_bear,     BUF_FLAGS)
-max_bars_back(vwap_bull_ok, BUF_FLAGS)
-max_bars_back(vwap_bear_ok, BUF_FLAGS)
 
 // ── V265: Dynamic SMC Auto-Tuner (Volatility-Adaptive) ──────────────────
 // Long-term ATR for volatility ratio (4× ATR period ≈ rolling baseline over ~56 bars with default ATR=14)
 float atr_slow     = ta.sma(atr_val, math.max(atr_len * 4, 50))
-max_bars_back(atr_slow, BUF_STATS)
 float vol_ratio    = (na(atr_slow) or atr_slow == 0) ? 1.0 : f_safe_div(atr_val, atr_slow)
 // Clamp to [0.3, 3.0]: prevents extreme parameter distortion in outlier conditions
 float vol_ratio_c  = math.max(0.3, math.min(3.0, vol_ratio))
 
 // HTF ATR for multi-timeframe volatility context
-float htf_atr_raw  = request.security(syminfo.tickerid, calc_tf, ta.atr(atr_len), lookahead=barmerge.lookahead_off)
-max_bars_back(htf_atr_raw, BUF_TREND)
 float htf_atr_safe = na(htf_atr_raw) ? atr_val : htf_atr_raw
 float htf_vol_ctx  = f_safe_div(htf_atr_safe, math.max(atr_val, syminfo.mintick))
 htf_vol_ctx := htf_vol_ctx == 0.0 ? 1.0 : htf_vol_ctx
@@ -1033,10 +985,6 @@ int _safe_pr     = math.max(1, math.min(p_pivot_right,     MAX_OFFSET - _safe_pl
 
 float _ph_raw = ta.pivothigh(high, _safe_pl_res, _safe_pr_res)
 float _pl_raw = ta.pivotlow(low,   _safe_pl,     _safe_pr)
-max_bars_back(_ph_raw, MAX_BUFF)
-max_bars_back(_pl_raw, MAX_BUFF)
-max_bars_back(ph_int,  MAX_BUFF)
-max_bars_back(pl_int,  MAX_BUFF)
 
 int   cand_off_res       = _safe_pr_res
 bool  ph_body_ok         = f_check_candle_body_ok(cand_off_res)
@@ -1086,10 +1034,6 @@ var float struct_h   = na
 var float struct_l   = na
 var int   struct_h_i = na
 var int   struct_l_i = na
-max_bars_back(struct_h,   BUF_FLAGS)
-max_bars_back(struct_l,   BUF_FLAGS)
-max_bars_back(struct_h_i, BUF_FLAGS)
-max_bars_back(struct_l_i, BUF_FLAGS)
 
 if not na(ph_int)
     struct_h   := ph_int
@@ -1101,7 +1045,6 @@ if not na(pl_int)
 // V280: Trend Channel drawing system moved to VISUAL to reduce ENGINE token count
 // eq_tol kept here — reused in EQH/EQL zone detection (BLOCK 5)
 float eq_tol = atr_val * 0.1
-max_bars_back(eq_tol, BUF_FLAGS)
 
 var float pd_high = high
 var float pd_low  = low
@@ -1116,8 +1059,6 @@ temp_low  := math.min(temp_low,  low)
 
 bool is_bull_bos = close > pd_high and barstate.isconfirmed
 bool is_bear_bos = close < pd_low  and barstate.isconfirmed
-max_bars_back(is_bull_bos, BUF_FLAGS)
-max_bars_back(is_bear_bos, BUF_FLAGS)
 
 if is_bull_bos
     pd_low    := temp_low
@@ -1211,9 +1152,6 @@ f_analyze_pivot_quality(int pid_idx, bool is_bull, int left_len, int right_len, 
     float _mem_atr = atr_val
     float _mem_gvs = global_vol_sma
     float _mem_rvol = rvol
-    max_bars_back(_mem_atr, MAX_BUFF)
-    max_bars_back(_mem_gvs, MAX_BUFF)
-    max_bars_back(_mem_rvol, MAX_BUFF)
 
     PivotMetrics res = na
     if do_calc
@@ -3477,11 +3415,6 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
     float _mem_rsi  = rsi_val
     bool  _mem_brk  = in_brokezone
     float _mem_atr = atr_val
-    max_bars_back(_mem_rvol, MAX_BUFF)
-    max_bars_back(_mem_z,    MAX_BUFF)
-    max_bars_back(_mem_rsi,  MAX_BUFF)
-    max_bars_back(_mem_brk,  MAX_BUFF)
-    max_bars_back(_mem_atr, MAX_BUFF)
     
     float diag_z_val = 0.0
     float diag_v_val = 0.0
@@ -4598,7 +4531,7 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
     n
 
 f_create_new_zones() =>
-    // V250: локальные series-ссылки с max_bars_back для безопасного доступа к истории
+    // V250: локальные series-ссылки для безопасного доступа к истории
     float _mem_atr  = atr_val
     float _mem_rvol = rvol
     float _mem_rsi  = rsi_val
@@ -4610,9 +4543,6 @@ f_create_new_zones() =>
     // V273-fix: guard against duplicate zone creation on same pivot bar
     var int _last_created_bull_idx = -1
     var int _last_created_bear_idx = -1
-    max_bars_back(_mem_atr,  MAX_BUFF)
-    max_bars_back(_mem_rvol, MAX_BUFF)
-    max_bars_back(_mem_rsi,  MAX_BUFF)
     // V273-fix: pre-compute ta-dependent functions outside conditionals for per-bar consistency
     bool _pre_absorption = f_detect_absorption()
     bool _pre_squeeze    = f_keltner_squeeze(20)
