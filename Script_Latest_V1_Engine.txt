@@ -908,40 +908,60 @@ float htf_vol_ctx_c = math.max(0.5, math.min(3.0, htf_vol_ctx))
 // за лимитом времени («Pine compilation was timed out»).
 // EMA(len) = e + 2/(len+1) × (close − e) — тождественно ta.ema, но не требует
 // ни исторического буфера, ни simple-int квалификатора и не ограничено 4999.
+// V300 (корневая причина): Pine ИНЛАЙНИТ тело функции в каждую точку вызова и
+// заводит отдельную series-переменную на каждый `var` внутри неё. Шесть ТФ ×
+// (f_dash_ema + f_dash_dir + f_dash_ticks) = 18 инлайн-копий и 6 самостоятельных
+// series-буферов, которые анализатор истории обходит по отдельности поверх и без
+// того крупного скрипта. Именно количество раскрываемых копий, а не тип
+// использованных функций, удерживало компиляцию за лимитом времени
+// («Pine compilation was timed out») — V293/V295/V297/V299 меняли содержимое
+// этих копий, но их число оставалось прежним.
+// Решение: одно состояние в массиве + ОДИН цикл `for i = 0 to 5`, который
+// компилируется единожды. EMA, направление и «тики до смены» считаются теми же
+// формулами, поэтому числовой результат не меняется.
 simple float _chart_sec = math.max(timeframe.in_seconds(timeframe.period), 1)
-f_dash_len(simple string tf) =>
-    math.max(1.0, dash_ema_len * timeframe.in_seconds(tf) / _chart_sec)
 
-f_dash_ema(simple float len) =>
-    float _alpha = 2.0 / (len + 1.0)
-    var float _e = na
-    _e := na(_e) ? close : _e + _alpha * (close - _e)
-    _e
+// Сглаживающие коэффициенты alpha = 2/(len+1) для ТФ 1m/5m/15m/1H/4H/1D.
+// Вычисляются один раз на первом баре: и период EMA, и длительности ТФ константны.
+var array<float> dash_alpha = array.from(
+     2.0 / (math.max(1.0, dash_ema_len * timeframe.in_seconds("1")   / _chart_sec) + 1.0),
+     2.0 / (math.max(1.0, dash_ema_len * timeframe.in_seconds("5")   / _chart_sec) + 1.0),
+     2.0 / (math.max(1.0, dash_ema_len * timeframe.in_seconds("15")  / _chart_sec) + 1.0),
+     2.0 / (math.max(1.0, dash_ema_len * timeframe.in_seconds("60")  / _chart_sec) + 1.0),
+     2.0 / (math.max(1.0, dash_ema_len * timeframe.in_seconds("240") / _chart_sec) + 1.0),
+     2.0 / (math.max(1.0, dash_ema_len * timeframe.in_seconds("D")   / _chart_sec) + 1.0))
+// Веса ТФ для консенсуса: старший весомее младшего (1,1,2,3,4,5 → сумма 16).
+var array<int> dash_weight = array.from(1, 1, 2, 3, 4, 5)
 
-float _d1_e   = f_dash_ema(f_dash_len("1"))
-float _d5_e   = f_dash_ema(f_dash_len("5"))
-float _d15_e  = f_dash_ema(f_dash_len("15"))
-float _d60_e  = f_dash_ema(f_dash_len("60"))
-float _d240_e = f_dash_ema(f_dash_len("240"))
-float _dD_e   = f_dash_ema(f_dash_len("D"))
+// Состояние EMA каждого ТФ и производные от неё направление и «запас хода».
+var array<float> dash_ema   = array.new_float(6, na)
+var array<int>   dash_dir   = array.new_int(6, 0)
+var array<float> dash_ticks = array.new_float(6, na)
 
-// Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
-f_dash_dir(float e) =>
-    float _flat_gap = dash_flat_atr * math.max(atr_val, syminfo.mintick)
-    na(e) ? 0 : math.abs(close - e) < _flat_gap ? 0 : close > e ? 1 : -1
+float _dash_flat_gap = dash_flat_atr * math.max(atr_val, syminfo.mintick)
+int   _mtf_w_sum = 0
+int   _mtf_up    = 0
+int   _mtf_dn    = 0
+for i = 0 to 5
+    float _e_prev = array.get(dash_ema, i)
+    float _e = na(_e_prev) ? close : _e_prev + array.get(dash_alpha, i) * (close - _e_prev)
+    array.set(dash_ema, i, _e)
+    float _gap = close - _e
+    // Направление: 1 = вверх, -1 = вниз, 0 = флэт (цена ближе _dash_flat_gap к EMA)
+    int _d = math.abs(_gap) < _dash_flat_gap ? 0 : _gap > 0 ? 1 : -1
+    array.set(dash_dir, i, _d)
+    // Количество тиков до смены направления = дистанция цены до EMA данного ТФ:
+    // пробой EMA переворачивает знак направления, поэтому это и есть «запас хода».
+    array.set(dash_ticks, i, syminfo.mintick <= 0 ? na : math.round(math.abs(_gap) / syminfo.mintick))
+    _mtf_w_sum += _d * array.get(dash_weight, i)
+    _mtf_up    += (_d > 0 ? 1 : 0)
+    _mtf_dn    += (_d < 0 ? 1 : 0)
 
-int mtf_dir_1   = f_dash_dir(_d1_e)
-int mtf_dir_5   = f_dash_dir(_d5_e)
-int mtf_dir_15  = f_dash_dir(_d15_e)
-int mtf_dir_60  = f_dash_dir(_d60_e)
-int mtf_dir_240 = f_dash_dir(_d240_e)
-int mtf_dir_D   = f_dash_dir(_dD_e)
-
-// Взвешенный консенсус [-1..1]: старший ТФ весомее младшего (1,1,2,3,4,5 → сумма 16).
-float mtf_bias = (mtf_dir_1 + mtf_dir_5 + 2 * mtf_dir_15 + 3 * mtf_dir_60 + 4 * mtf_dir_240 + 5 * mtf_dir_D) / 16.0
+// Взвешенный консенсус [-1..1]
+float mtf_bias = _mtf_w_sum / 16.0
 // Количество ТФ, подтверждающих каждое направление (для гейта надёжности зон)
-int mtf_up_cnt = (mtf_dir_1 > 0 ? 1 : 0) + (mtf_dir_5 > 0 ? 1 : 0) + (mtf_dir_15 > 0 ? 1 : 0) + (mtf_dir_60 > 0 ? 1 : 0) + (mtf_dir_240 > 0 ? 1 : 0) + (mtf_dir_D > 0 ? 1 : 0)
-int mtf_dn_cnt = (mtf_dir_1 < 0 ? 1 : 0) + (mtf_dir_5 < 0 ? 1 : 0) + (mtf_dir_15 < 0 ? 1 : 0) + (mtf_dir_60 < 0 ? 1 : 0) + (mtf_dir_240 < 0 ? 1 : 0) + (mtf_dir_D < 0 ? 1 : 0)
+int mtf_up_cnt = _mtf_up
+int mtf_dn_cnt = _mtf_dn
 
 // Dynamic scaling factors
 // inv_vol: high volatility → smaller lookback; low volatility → larger lookback
@@ -6020,11 +6040,10 @@ alertcondition(_alert_mbr_zone, title="🔀 Multi-Bar Rejection", message="Multi
 // V292: входы, расчёт EMA по ТФ и f_dash_dir перенесены в БЛОК 2 (MTF-консенсус),
 // так как их использует фильтр надёжности зон, работающий раньше по коду.
 
-// Количество тиков до смены направления = дистанция цены до EMA данного ТФ.
-// Пробой EMA переворачивает знак направления, поэтому это и есть «запас хода».
-f_dash_ticks(float e) =>
-    float _ticks = na(e) or syminfo.mintick <= 0 ? na : math.round(math.abs(close - e) / syminfo.mintick)
-    _ticks
+// V300: направление и «тики до смены» больше не считаются здесь — они уже
+// посчитаны единым циклом в БЛОКЕ 2 и лежат в массивах dash_dir / dash_ticks.
+// Дашборд только читает их, не создавая новых инлайн-копий функций.
+var array<string> dash_tf_names = array.from("1m", "5m", "15m", "1H", "4H", "1D")
 
 var table dash_tbl = na
 if dash_show and barstate.islast
@@ -6039,22 +6058,18 @@ if dash_show and barstate.islast
     table.cell(dash_tbl, 1, 0, "Тренд",   text_color=color.silver, text_size=_sz, bgcolor=color.new(#1D2939, 10))
     table.cell(dash_tbl, 2, 0, "Тиков",   text_color=color.silver, text_size=_sz, bgcolor=color.new(#1D2939, 10))
 
-    array<string> _tf_names = array.from("1m", "5m", "15m", "1H", "4H", "1D")
-    array<int>    _tf_dirs  = array.from(mtf_dir_1, mtf_dir_5, mtf_dir_15, mtf_dir_60, mtf_dir_240, mtf_dir_D)
-    array<float>  _tf_ticks = array.from(f_dash_ticks(_d1_e), f_dash_ticks(_d5_e), f_dash_ticks(_d15_e), f_dash_ticks(_d60_e), f_dash_ticks(_d240_e), f_dash_ticks(_dD_e))
-
     int   _sum_dir  = 0
     float _min_tick = na
     for i = 0 to 5
-        int   _d = array.get(_tf_dirs, i)
-        float _t = array.get(_tf_ticks, i)
+        int   _d = array.get(dash_dir, i)
+        float _t = array.get(dash_ticks, i)
         _sum_dir += _d
         if not na(_t) and (na(_min_tick) or _t < _min_tick)
             _min_tick := _t
 
         string _lbl = _d > 0 ? "▲ Вверх" : _d < 0 ? "▼ Вниз" : "● Флэт"
         color  _clr = _d > 0 ? #00C853 : _d < 0 ? #FF1744 : color.gray
-        table.cell(dash_tbl, 0, i + 1, array.get(_tf_names, i), text_color=color.silver, text_size=_sz)
+        table.cell(dash_tbl, 0, i + 1, array.get(dash_tf_names, i), text_color=color.silver, text_size=_sz)
         table.cell(dash_tbl, 1, i + 1, _lbl, text_color=_clr, text_size=_sz)
         table.cell(dash_tbl, 2, i + 1, na(_t) ? "—" : str.tostring(_t, "#"), text_color=color.new(_clr, 20), text_size=_sz)
 
