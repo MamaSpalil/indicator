@@ -901,17 +901,29 @@ float htf_vol_ctx_c = math.max(0.5, math.min(3.0, htf_vol_ctx))
 // умноженным на отношение длительностей баров: одна и та же длина окна во времени
 // даёт ту же сглаженную линию, а дашборду нужен именно знак «цена выше/ниже EMA ТФ».
 // Дополнительных серий и подпрограмм это не создаёт.
+// V299: шесть вызовов ta.ema() заменены собственной рекуррентной формулой.
+// ta.ema() с непостоянной длиной компилируется как отдельная подпрограмма со
+// своим историческим буфером до `length` баров; шесть таких экземпляров с
+// длинами до 4999 баров (ТФ «D» на минутном графике) и удерживали компиляцию
+// за лимитом времени («Pine compilation was timed out»).
+// EMA(len) = e + 2/(len+1) × (close − e) — тождественно ta.ema, но не требует
+// ни исторического буфера, ни simple-int квалификатора и не ограничено 4999.
 simple float _chart_sec = math.max(timeframe.in_seconds(timeframe.period), 1)
-// Возвращает simple int: ta.ema() принимает длину только этого квалификатора.
 f_dash_len(simple string tf) =>
-    int(math.max(1, math.min(4999, math.round(dash_ema_len * timeframe.in_seconds(tf) / _chart_sec))))
+    math.max(1.0, dash_ema_len * timeframe.in_seconds(tf) / _chart_sec)
 
-float _d1_e   = ta.ema(close, f_dash_len("1"))
-float _d5_e   = ta.ema(close, f_dash_len("5"))
-float _d15_e  = ta.ema(close, f_dash_len("15"))
-float _d60_e  = ta.ema(close, f_dash_len("60"))
-float _d240_e = ta.ema(close, f_dash_len("240"))
-float _dD_e   = ta.ema(close, f_dash_len("D"))
+f_dash_ema(simple float len) =>
+    float _alpha = 2.0 / (len + 1.0)
+    var float _e = na
+    _e := na(_e) ? close : _e + _alpha * (close - _e)
+    _e
+
+float _d1_e   = f_dash_ema(f_dash_len("1"))
+float _d5_e   = f_dash_ema(f_dash_len("5"))
+float _d15_e  = f_dash_ema(f_dash_len("15"))
+float _d60_e  = f_dash_ema(f_dash_len("60"))
+float _d240_e = f_dash_ema(f_dash_len("240"))
+float _dD_e   = f_dash_ema(f_dash_len("D"))
 
 // Направление: 1 = вверх, -1 = вниз, 0 = флэт/нет данных
 f_dash_dir(float e) =>
