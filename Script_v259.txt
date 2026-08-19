@@ -263,6 +263,16 @@ use_bb_arrow       = input.bool(true,  "Стрелка направления н
 use_fvg_connector  = input.bool(false, "Соединительная линия FVG → Zone", group=group_vis2, tooltip="Пунктирная линия от FVG к родительской зоне, если FVG находится вне зоны.")
 use_rz_zigzag      = input.bool(true,  "Зигзаг-граница для Rejection Zone", group=group_vis2, tooltip="Волнистая верхняя/нижняя граница RZ для визуального отличия от OB.")
 
+// ── V259+: Interaction-aware зоны (детекция качества + визуализация) ───────
+group_vis3 = "🔬 Zone Interaction (V259+)"
+use_zone_eq_line   = input.bool(true,  "EQ-линия (50%) внутри зоны", group=group_vis3, tooltip="Пунктирная линия по середине зоны — ключевой уровень равновесия (Consequent Encroachment). Работает независимо от Fib-сетки.")
+use_mitig_shade    = input.bool(true,  "Подсветка выработанной части зоны", group=group_vis3, tooltip="Отдельный бокс показывает, какая доля зоны уже поглощена ценой (максимальное проникновение). Помогает мгновенно отличить свежую зону от почти отработанной.")
+use_touch_stats    = input.bool(true,  "Счётчик касаний и % выработки в подписи", group=group_vis3, tooltip="К подписи зоны добавляются: ✧ — зона ещё не тестировалась, ✕N — число касаний, N% — глубина максимального проникновения.")
+use_fresh_border   = input.bool(true,  "Утолщённая рамка у нетронутых (fresh) зон", group=group_vis3, tooltip="Свежие (ни разу не протестированные) зоны получают более толстую рамку — статистически они наиболее надёжны.")
+respect_bonus      = input.float(6.0,  "Бонус Score за уважённое касание", minval=0.0, maxval=25.0, step=0.5, group=group_vis3, tooltip="Начисляется, когда цена заходит в зону и закрывается обратно за её пределами в сторону зоны (подтверждённая реакция).")
+max_fill_invalid   = input.float(0.85, "Инвалидация зоны при выработке (доля)", minval=0.5, maxval=1.0, step=0.05, group=group_vis3, tooltip="Если цена проникла в зону глубже указанной доли её высоты, зона считается отработанной и удаляется (даже без пробоя закрытием).")
+use_max_fill_invalid = input.bool(true, "Включить инвалидацию по глубине выработки", group=group_vis3)
+
 group_tl  = "📐 Trend Lines"
 show_trendlines  = input.bool(true,   "Показывать линии тренда",                  group=group_tl)
 c_tl_bull  = input.color(color.new(color.lime, 20),  "Цвет: восходящий тренд",   group=group_tl)
@@ -1429,6 +1439,15 @@ type Zone
     label        bb_arrow_lbl      // стрелка BB
     line         fvg_connector     // FVG→Zone connector
     array<line>  rz_zigzag_lines   // зигзаг-граница RZ
+    // V259+: interaction tracking
+    int          touch_count       // сколько раз цена входила в зону
+    int          respect_count     // сколько раз цена вошла и закрылась обратно за зоной
+    float        max_fill          // максимальная глубина проникновения (0..1 от высоты зоны)
+    bool         is_fresh          // зона ещё ни разу не тестировалась
+    bool         was_inside        // цена находилась внутри зоны на предыдущем баре
+    line         eq_line           // EQ (50%) линия
+    box          mitig_box         // подсветка выработанной части
+    float        fvg_fill          // доля заполнения FVG (0..1)
 
 var array<Zone> zone_db = array.new<Zone>()
 var Zone _dummy_z = Zone.new()
@@ -1600,8 +1619,89 @@ f_update_rz_zigzag(Zone z) =>
             while array.size(z.rz_zigzag_lines) > 0
                 line.delete(array.pop(z.rz_zigzag_lines))
 
+// ── V259+: EQ (50%) линия зоны ─────────────────────────────────────────────
+f_update_eq_line(Zone z, color bd_col) =>
+    if use_zone_eq_line and z.active and (z.top - z.bot) > syminfo.mintick * 4
+        float eq_y = (z.top + z.bot) / 2.0
+        int   eq_x1 = math.max(z.created_at, bar_index - 25)
+        color eq_c = color.new(color.rgb(color.r(bd_col), color.g(bd_col), color.b(bd_col)), 25)
+        if na(z.eq_line)
+            z.eq_line := line.new(eq_x1, eq_y, bar_index + 5, eq_y, color=eq_c, width=1, style=line.style_dashed, xloc=xloc.bar_index)
+        else
+            line.set_xy1(z.eq_line, eq_x1, eq_y)
+            line.set_xy2(z.eq_line, bar_index + 5, eq_y)
+            line.set_color(z.eq_line, eq_c)
+            z.eq_line
+    else
+        if not na(z.eq_line)
+            line.delete(z.eq_line)
+            z.eq_line := na
+
+// ── V259+: подсветка выработанной (поглощённой ценой) части зоны ───────────
+f_update_mitig_shade(Zone z) =>
+    if use_mitig_shade and z.active and nz(z.max_fill) > 0.02
+        float h  = z.top - z.bot
+        float fl = math.min(math.max(nz(z.max_fill), 0.0), 1.0)
+        // Support вырабатывается сверху вниз, resistance — снизу вверх
+        float m_top = z.is_bull ? z.top : z.bot + h * fl
+        float m_bot = z.is_bull ? z.top - h * fl : z.bot
+        int   m_x1  = math.max(z.created_at, bar_index - 25)
+        // Чем глубже выработка, тем заметнее «серая» штриховка
+        int   m_t   = int(math.round(88.0 - 28.0 * fl))
+        color m_col = color.new(color.gray, math.max(45, math.min(95, m_t)))
+        if na(z.mitig_box)
+            z.mitig_box := box.new(m_x1, m_top, bar_index + 5, m_bot,
+                 border_color=color.new(color.gray, 70), border_width=1, border_style=line.style_dotted,
+                 bgcolor=m_col, xloc=xloc.bar_index)
+        else
+            box.set_lefttop(z.mitig_box, m_x1, m_top)
+            box.set_rightbottom(z.mitig_box, bar_index + 5, m_bot)
+            box.set_bgcolor(z.mitig_box, m_col)
+            z.mitig_box
+    else
+        if not na(z.mitig_box)
+            box.delete(z.mitig_box)
+            z.mitig_box := na
+
+// ── V259+: учёт взаимодействия цены с зоной (свежесть/касания/выработка) ───
+// Вызывается один раз на подтверждённом баре ДО обработки пробоев.
+f_update_zone_interaction(Zone z) =>
+    if z.active and not na(z.top) and not na(z.bot)
+        float h = math.max(z.top - z.bot, syminfo.mintick)
+        // Проникновение хвостом внутрь зоны с «рабочей» стороны
+        float pen = z.is_bull ? (z.top - math.max(low, z.bot)) : (math.min(high, z.top) - z.bot)
+        bool  touching     = low <= z.top and high >= z.bot
+        bool  closed_inside = close <= z.top and close >= z.bot
+        if touching
+            float fill = math.min(math.max(pen / h, 0.0), 1.0)
+            if na(z.max_fill) or fill > z.max_fill
+                z.max_fill := fill
+            // Новый эпизод теста: предыдущий бар не закрывался внутри зоны
+            if not z.was_inside
+                z.touch_count := nz(z.touch_count) + 1
+                z.is_fresh    := false
+            // Подтверждённая реакция: цена зашла в зону и закрылась обратно за её пределами
+            bool respected = z.is_bull ? (close > z.top) : (close < z.bot)
+            if respected and not z.was_inside
+                z.respect_count := nz(z.respect_count) + 1
+                z.score := math.min(z.score + respect_bonus, 150.0)
+                if z.score >= 100
+                    z.tier := "BEST"
+                else if z.score >= 80
+                    z.tier := "STRONG"
+            z.was_inside := closed_inside
+        else
+            z.was_inside := false
+    false
+
 // ── Полное удаление визуальных элементов зоны (V249) ──────────────────────
 f_delete_zone_visuals(Zone z) =>
+    if not na(z.eq_line)
+        line.delete(z.eq_line)
+        z.eq_line := na
+    if not na(z.mitig_box)
+        box.delete(z.mitig_box)
+        z.mitig_box := na
     if not na(z.glow_line_top)
         line.delete(z.glow_line_top)
         z.glow_line_top := na
@@ -1704,16 +1804,25 @@ method update(Zone this) =>
                 line.delete(array.pop(this.grid_lines))
                 label.delete(array.pop(this.grid_labels))
 
-        // FVG box — удаляем после двух пробитий ценой закрытия
+        // FVG box — V259+: направленная митигация.
+        // Bullish FVG заполняется движением ВНИЗ (close ниже верхней границы),
+        // bearish — движением ВВЕРХ. Уход цены в сторону от гэпа больше не считается пробитием.
         if not na(this.fvg_gfx)
             float ft = box.get_top(this.fvg_gfx)
             float fb = box.get_bottom(this.fvg_gfx)
-            bool is_penetrated = (close > ft) or (close < fb)
+            float f_h = math.max(ft - fb, syminfo.mintick)
+            // Глубина заполнения гэпа с рабочей стороны
+            float fvg_pen = this.is_bull ? (ft - math.max(low, fb)) : (math.min(high, ft) - fb)
+            float fvg_fill_now = math.min(math.max(fvg_pen / f_h, 0.0), 1.0)
+            if na(this.fvg_fill) or fvg_fill_now > this.fvg_fill
+                this.fvg_fill := fvg_fill_now
+            bool is_penetrated = this.is_bull ? (close < ft) : (close > fb)
+            bool fully_filled  = this.is_bull ? (close < fb) : (close > ft)
             if is_penetrated and not this.fvg_was_penetrated
                 this.fvg_break_count += 1
             this.fvg_was_penetrated := is_penetrated
 
-            if this.fvg_break_count >= 2
+            if fully_filled or this.fvg_break_count >= 2
                 box.delete(this.fvg_gfx)
                 this.fvg_gfx  := na
                 this.fvg_type := "None"
@@ -1759,12 +1868,27 @@ method update(Zone this) =>
                              (this.is_bull ? "Sup " : "Res ")
         string fvg_str    = (this.fvg_type != "None" and this.fvg_type != "" and not na(this.fvg_gfx)) ? "\n[" + this.fvg_type + "]" : ""
         string abs_str    = this.absorbed_count > 0 ? " ⊕" + str.tostring(this.absorbed_count) : ""
-        string lbl_txt    = z_prefix + emoji + " " + str.tostring(this.score, "#.0") + abs_str + idm_txt + fvg_str
+        // V259+: свежесть / касания / глубина выработки
+        string touch_str  = ""
+        if use_touch_stats
+            if nz(this.touch_count) == 0
+                touch_str := " ✧"
+            else
+                touch_str := " ✕" + str.tostring(this.touch_count)
+                if nz(this.respect_count) > 0
+                    touch_str += "↩" + str.tostring(this.respect_count)
+                if nz(this.max_fill) > 0.02
+                    touch_str += " " + str.tostring(int(math.round(nz(this.max_fill) * 100.0))) + "%"
+        string lbl_txt    = z_prefix + emoji + " " + str.tostring(this.score, "#.0") + abs_str + touch_str + idm_txt + fvg_str
+
+        int bd_w = this.z_type == "BB" ? 2 : 1
+        if use_fresh_border and nz(this.touch_count) == 0 and this.z_type != "BB"
+            bd_w := 2
 
         box.set_border_color(this.gfx, c_bd_z)
         box.set_bgcolor(this.gfx, c_bg_z)
         box.set_border_style(this.gfx, stl)
-        box.set_border_width(this.gfx, this.z_type == "BB" ? 2 : this.z_type == "RZ" ? 1 : 1)
+        box.set_border_width(this.gfx, bd_w)
         box.set_text(this.gfx, lbl_txt)
         box.set_text_color(this.gfx, c_bd_z)
         box.set_text_halign(this.gfx, text.align_right)
@@ -1777,6 +1901,8 @@ method update(Zone this) =>
         f_update_bb_arrow(this)
         f_update_fvg_connector(this)
         f_update_rz_zigzag(this)
+        f_update_eq_line(this, c_bd_z)
+        f_update_mitig_shade(this)
 
         // Debug label
         bool should_show_debug = debug_mode and not this.debug_shown and this.debug_log != "" and this.score > 60
@@ -1852,6 +1978,13 @@ method trigger_bb(Zone this, bool strong_break, float break_z_score, bool do_exe
             this.idm_swept := false
             this.sniper_price := zone_eq
             this.sniper_stage := 0
+            // V259+: при конвертации в BB зона становится «свежей» в новом качестве
+            this.touch_count   := 0
+            this.respect_count := 0
+            this.max_fill      := 0.0
+            this.is_fresh      := true
+            this.was_inside    := false
+            this.fvg_fill      := 0.0
 
             if not na(this.sn_lbl)
                 label.set_xy(this.sn_lbl, bar_index + 5, zone_eq)
@@ -2795,7 +2928,9 @@ f_handle_zone_removal(Zone z, bool is_closed, bool far, bool deep_wick_broke, bo
     if z.z_type == "BB"
         is_choppy := false
     bool is_expired  = use_zone_age_fade and ((bar_index - z.created_at) > zone_max_age) and z.z_type != "BB"
-    bool broke_cond  = (not z.active) or far or deep_wick_broke or is_choppy or real_breakout or is_expired
+    // V259+: зона считается отработанной, если цена проникла глубже заданной доли её высоты
+    bool is_consumed = use_max_fill_invalid and z.z_type != "BB" and nz(z.max_fill) >= max_fill_invalid
+    bool broke_cond  = (not z.active) or far or deep_wick_broke or is_choppy or real_breakout or is_expired or is_consumed
     if z.pending_break and not real_breakout and not deep_wick_broke and z.active
         broke_cond := false
     bool zone_removed = false
@@ -2958,7 +3093,9 @@ f_limit_visible_zones() =>
             int[] sorted_indices = array.sort_indices(scores, order.descending)
             array<Zone> to_keep  = array.new<Zone>()
 
-            int SAFE_MAX   = show_fvg ? 240 : 490
+            // V259+: бюджет боксов = 1 основной + опционально FVG + опционально mitigation shade
+            int boxes_per_zone = 1 + (show_fvg ? 1 : 0) + (use_mitig_shade ? 1 : 0)
+            int SAFE_MAX   = math.max(1, int(math.floor(490.0 / float(boxes_per_zone))))
             int final_limit = math.min(max_visible_zones, SAFE_MAX)
 
             if final_limit == 1
@@ -3011,7 +3148,9 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         chop_count=0, pending_break=false, debug_log=dlog, debug_shown=false,
         fvg_type=fvg_tp, fvg_break_count=0, fvg_was_penetrated=false, absorbed_count=0, bb_break_count=0,
         glow_line_top=na, glow_line_bot=na, health_line=na,
-        bb_arrow_lbl=na, fvg_connector=na, rz_zigzag_lines=array.new<line>())
+        bb_arrow_lbl=na, fvg_connector=na, rz_zigzag_lines=array.new<line>(),
+        touch_count=0, respect_count=0, max_fill=0.0, is_fresh=true, was_inside=false,
+        eq_line=na, mitig_box=na, fvg_fill=0.0)
     n
 
 f_create_new_zones() =>
@@ -3393,6 +3532,7 @@ f_mng() =>
             for i = array.size(zone_db) - 1 to 0
                 Zone z = array.get(zone_db, i)
                 [dist, far] = f_calc_zone_validity(z)
+                f_update_zone_interaction(z)
                 f_update_sfp(z)
                 [real_breakout, deep_wick_broke] = f_process_critical_changes(z, is_closed, g_prev_low, g_prev_high)
                 bool was_removed = f_handle_zone_removal(z, is_closed, far, deep_wick_broke, real_breakout, i, g_strong_break)
