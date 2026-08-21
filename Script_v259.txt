@@ -273,6 +273,17 @@ respect_bonus      = input.float(6.0,  "Бонус Score за уважённое
 max_fill_invalid   = input.float(0.85, "Инвалидация зоны при выработке (доля)", minval=0.5, maxval=1.0, step=0.05, group=group_vis3, tooltip="Если цена проникла в зону глубже указанной доли её высоты, зона считается отработанной и удаляется (даже без пробоя закрытием).")
 use_max_fill_invalid = input.bool(true, "Включить инвалидацию по глубине выработки", group=group_vis3)
 
+// ── V259+: Real-Time Zone Hint (подсказка статистики на текущем баре) ──────
+group_hint = "💡 Real-Time Zone Hint (V259+)"
+use_zone_hint    = input.bool(true, "Подсказка статистики при входе цены в зону", group=group_hint, tooltip="Когда цена на текущем (последнем) баре находится внутри активной зоны, выводится живая подсказка: направление рынка, сила зоны, сторона сделки (лонг/шорт), вероятность успеха и ориентировочные точки выхода.")
+hint_detail      = input.string("Full", "Детализация подсказки", options=["Full","Compact"], group=group_hint)
+hint_min_score   = input.float(0.0, "Мин. Score зоны для подсказки", minval=0.0, maxval=150.0, step=5.0, group=group_hint)
+hint_min_prob    = input.float(0.0, "Мин. вероятность для показа (%)", minval=0.0, maxval=95.0, step=5.0, group=group_hint)
+hint_show_levels = input.bool(true, "Показывать уровни входа / стопа / целей", group=group_hint)
+hint_show_risk   = input.bool(true, "Показывать R:R, мат. ожидание и объём позиции", group=group_hint)
+hint_draw_lines  = input.bool(true, "Рисовать линии SL / TP1 / TP2 на текущем баре", group=group_hint)
+hint_size        = input.string("Small", "Размер текста подсказки", options=["Tiny","Small","Normal"], group=group_hint)
+
 group_tl  = "📐 Trend Lines"
 show_trendlines  = input.bool(true,   "Показывать линии тренда",                  group=group_tl)
 c_tl_bull  = input.color(color.new(color.lime, 20),  "Цвет: восходящий тренд",   group=group_tl)
@@ -3966,6 +3977,198 @@ if not na(pd_low)
 
 // ── VWAP plot ─────────────────────────────────────────────────────────────
 plot(use_vwap ? vwap_val : na, "VWAP", color=color.new(color.orange, 30), linewidth=1)
+
+// ==========================================
+// БЛОК 8b: REAL-TIME ZONE HINT (V259+)
+// ==========================================
+// Живая подсказка на текущем баре в момент, когда цена входит в активную зону.
+// Агрегирует: направление рынка (HTF/ITF/VWAP/Major BOS/ADX/сессия/RVOL),
+// силу зоны (Score, Tier, свежесть, касания, глубина выработки, FVG, IDM),
+// сторону сделки (лонг/шорт), вероятность успеха и ориентировочные точки выхода.
+f_ok_ico(bool b) => b ? "✅" : "❌"
+
+var label hint_lbl   = na
+var line  hint_sl_ln = na
+var line  hint_t1_ln = na
+var line  hint_t2_ln = na
+
+if barstate.islast
+    if not na(hint_lbl)
+        label.delete(hint_lbl)
+        hint_lbl := na
+    if not na(hint_sl_ln)
+        line.delete(hint_sl_ln)
+        hint_sl_ln := na
+    if not na(hint_t1_ln)
+        line.delete(hint_t1_ln)
+        hint_t1_ln := na
+    if not na(hint_t2_ln)
+        line.delete(hint_t2_ln)
+        hint_t2_ln := na
+
+    if use_zone_hint and array.size(zone_db) > 0
+        // ── 1. Выбор зоны, внутри которой сейчас находится цена ────────────
+        Zone  hz        = na
+        float best_rank = -1e10
+        for z in zone_db
+            if z.active and not z.mitigated and not na(z.top) and not na(z.bot)
+                bool inside = low <= z.top and high >= z.bot
+                if inside and z.score >= hint_min_score
+                    // Приоритет: сильная зона, ближайшая к текущей цене
+                    float dist_atr = math.abs(close - math.avg(z.top, z.bot)) / math.max(atr_val, syminfo.mintick)
+                    float rank     = z.score - dist_atr * 5.0
+                    if rank > best_rank
+                        best_rank := rank
+                        hz        := z
+
+        if not na(hz)
+            bool  is_long = hz.is_bull
+            float zh      = math.max(hz.top - hz.bot, syminfo.mintick)
+            float pen_now = is_long ? (hz.top - math.max(low, hz.bot)) : (math.min(high, hz.top) - hz.bot)
+            float fill_now = math.min(math.max(pen_now / zh, 0.0), 1.0)
+            float depth    = math.min(math.max(nz(hz.max_fill), fill_now), 1.0)
+
+            // ── 2. Факторы рынка ──────────────────────────────────────────
+            bool f_htf    = is_long ? global_bull : global_bear
+            bool f_itf    = is_long ? itf_bull    : itf_bear
+            bool f_vwap   = na(vwap_val) ? false : (is_long ? close > vwap_val : close < vwap_val)
+            bool f_major  = is_long == major_bull_trend
+            bool f_rsi    = is_long ? (rsi_val < inp_rsi_ob) : (rsi_val > inp_rsi_os)
+            bool f_rsi_x  = is_long ? (rsi_val <= inp_rsi_os) : (rsi_val >= inp_rsi_ob)
+            bool f_pd     = na(pd_mid) ? true : (is_long ? close < pd_mid : close > pd_mid)
+            bool f_idm    = hz.idm_swept
+            bool f_fvg    = hz.fvg_type != "None" and hz.fvg_type != ""
+            bool f_vol    = rvol >= p_mom_rvol
+            bool f_adx    = htf_adx >= p_adx_lim
+            bool f_sess   = in_brokezone
+            bool f_fresh  = nz(hz.touch_count) == 0
+
+            int conf_cnt = (f_htf?1:0) + (f_itf?1:0) + (f_vwap?1:0) + (f_major?1:0) + (f_rsi?1:0) +
+                           (f_pd?1:0) + (f_idm?1:0) + (f_fvg?1:0) + (f_vol?1:0) + (f_adx?1:0) + (f_sess?1:0)
+
+            // ── 3. Вероятность успешной сделки (взвешенная модель) ─────────
+            float prob = 42.0
+            prob += f_htf   ? 12.0 : -10.0
+            prob += f_itf   ?  8.0 :  -6.0
+            prob += f_vwap  ?  6.0 :  -4.0
+            prob += f_major ?  5.0 :  -4.0
+            prob += f_rsi   ?  3.0 :  -6.0
+            prob += f_rsi_x ?  5.0 :   0.0
+            prob += f_pd    ?  5.0 :  -3.0
+            prob += f_idm   ?  3.0 :   0.0
+            prob += f_fvg   ?  4.0 :   0.0
+            prob += f_vol   ?  5.0 :  -2.0
+            prob += f_adx   ?  4.0 : (global_flat ? -6.0 : 0.0)
+            prob += f_sess  ?  4.0 :  -3.0
+            // Качество зоны
+            prob += math.min(15.0, math.max(-6.0, (hz.score - 60.0) / 60.0 * 15.0))
+            prob += f_fresh ? 10.0 : -math.min(12.0, 3.0 * float(nz(hz.touch_count)))
+            prob += math.min(8.0, 4.0 * float(nz(hz.respect_count)))
+            prob -= 12.0 * depth
+            // Статистический прогноз движка (если накоплена выборка)
+            if d_n >= stoch_min_val and not na(d_prob)
+                prob += (d_prob - 50.0) * 0.15
+            prob := math.max(5.0, math.min(95.0, prob))
+
+            // ── 4. Уровни входа / стопа / ориентировочных выходов ──────────
+            float en_p  = close
+            float sl_p  = is_long ? (hz.bot - atr_val * sl_pad * final_pad_mult) :
+                                    (hz.top + atr_val * sl_pad * final_pad_mult)
+            float h_risk  = math.max(math.abs(en_p - sl_p), syminfo.mintick)
+            float m_tp1 = target_mode == "Fibonacci Extensions" ? fib_tp1 : part_ratio
+            float m_tp2 = target_mode == "Fibonacci Extensions" ? fib_tp2 : inp_tp_ratio
+            float tp1_p = is_long ? en_p + h_risk * m_tp1 : en_p - h_risk * m_tp1
+            float tp2_p = is_long ? en_p + h_risk * m_tp2 : en_p - h_risk * m_tp2
+
+            // Структурная цель (ближайший противоположный свинг)
+            float str_t = is_long ? struct_h : struct_l
+            if not na(str_t)
+                if (is_long ? str_t <= en_p : str_t >= en_p)
+                    str_t := na
+
+            // Ближайшая противоположная зона — «стена» на пути к цели
+            float wall = na
+            for z2 in zone_db
+                if z2.active and not z2.mitigated and z2.is_bull != is_long and not na(z2.top) and not na(z2.bot)
+                    if is_long and z2.bot > en_p
+                        wall := na(wall) ? z2.bot : math.min(wall, z2.bot)
+                    if not is_long and z2.top < en_p
+                        wall := na(wall) ? z2.top : math.max(wall, z2.top)
+
+            float rr2      = math.abs(tp2_p - en_p) / h_risk
+            float p_frac   = prob / 100.0
+            float ev_r     = p_frac * rr2 - (1.0 - p_frac)
+            float qty_hint = f_qty(h_risk)
+            int   eta_bars = int(math.round(math.abs(tp1_p - en_p) / math.max(atr_val, syminfo.mintick) * 1.5))
+
+            // ── 5. Вердикт ────────────────────────────────────────────────
+            string verdict = prob >= 72 ? "🟢 СИЛЬНЫЙ СЕТАП" :
+                             prob >= 60 ? "🟡 УМЕРЕННЫЙ" :
+                             prob >= 48 ? "🟠 СЛАБЫЙ — ждать подтверждения" :
+                                          "🔴 ПРОТИВ РЫНКА — пропустить"
+            string mkt_dir = global_flat ? "FLAT ⚖️" : global_bull ? "BULL ▲" : global_bear ? "BEAR ▼" : "N/A"
+            string side    = is_long ? "LONG ▲" : "SHORT ▼"
+            string z_name  = hz.z_type == "BB" ? "Breaker" : hz.z_type == "RZ" ? "Rejection" : "Order Block"
+            string fresh_s = f_fresh ? "✧ FRESH" : "✕" + str.tostring(nz(hz.touch_count)) +
+                             (nz(hz.respect_count) > 0 ? "↩" + str.tostring(nz(hz.respect_count)) : "")
+
+            if prob >= hint_min_prob
+                string txt = "💡 ЦЕНА В ЗОНЕ — " + side + "\n"
+                txt += "━━━━━━━━━━━━━━━━━━\n"
+                txt += "Рынок: " + mkt_dir + "  ADX " + str.tostring(htf_adx, "#") +
+                       "  " + (current_session == "Quiet" ? "😴" : "⚡") + current_session + "\n"
+                txt += "Зона: " + z_name + " " + hz.tier + " " + str.tostring(hz.score, "#") + "pts  " + fresh_s + "\n"
+                txt += "Выработка: " + str.tostring(int(math.round(depth * 100.0))) + "%  |  Совпало факторов: " +
+                       str.tostring(conf_cnt) + "/11\n"
+                txt += "Вероятность успеха: " + str.tostring(prob, "#.0") + "%  " +
+                       (d_n >= stoch_min_val ? "(выборка " + str.tostring(d_n) + ")" : "(мало данных)") + "\n"
+                txt += verdict + "\n"
+
+                if hint_detail == "Full"
+                    txt += "━━━━━━━━━━━━━━━━━━\n"
+                    txt += "HTF " + f_ok_ico(f_htf) + "  ITF " + f_ok_ico(f_itf) + "  VWAP " + f_ok_ico(f_vwap) +
+                           "  BOS " + f_ok_ico(f_major) + "\n"
+                    txt += "RSI " + str.tostring(rsi_val, "#") + " " + f_ok_ico(f_rsi) +
+                           "  RVOL " + str.tostring(rvol, "#.0") + " " + f_ok_ico(f_vol) +
+                           "  P/D " + f_ok_ico(f_pd) + "\n"
+                    txt += "IDM " + f_ok_ico(f_idm) + "  FVG " + (f_fvg ? "✅ " + hz.fvg_type : "❌") + "\n"
+
+                if hint_show_levels
+                    txt += "━━━━━━━━━━━━━━━━━━\n"
+                    txt += "Вход:  " + str.tostring(en_p, format.mintick) + "\n"
+                    txt += "Стоп:  " + str.tostring(sl_p, format.mintick) + "  (-1R)\n"
+                    txt += "TP1:   " + str.tostring(tp1_p, format.mintick) + "  (" + str.tostring(m_tp1, "#.##") + "R)\n"
+                    txt += "TP2:   " + str.tostring(tp2_p, format.mintick) + "  (" + str.tostring(m_tp2, "#.##") + "R)\n"
+                    if not na(str_t)
+                        txt += "Структурная цель: " + str.tostring(str_t, format.mintick) + "\n"
+                    if not na(wall)
+                        txt += "⚠️ Встречная зона: " + str.tostring(wall, format.mintick) + "\n"
+                    txt += "≈ Время до TP1: " + str.tostring(math.max(1, eta_bars)) + " баров\n"
+
+                if hint_show_risk
+                    txt += "━━━━━━━━━━━━━━━━━━\n"
+                    txt += "R:R до TP2: 1:" + str.tostring(rr2, "#.##") +
+                           "  |  MO: " + (ev_r >= 0 ? "+" : "") + str.tostring(ev_r, "#.##") + "R\n"
+                    txt += "Объём (риск " + str.tostring(p_risk, "#.#") + "%): " + str.tostring(qty_hint, "#.####")
+
+                color h_col = prob >= 72 ? color.new(is_long ? color.teal : color.maroon, 12) :
+                              prob >= 60 ? color.new(color.olive, 18) :
+                              prob >= 48 ? color.new(color.gray, 20) : color.new(color.black, 20)
+                string h_sz = hint_size == "Tiny" ? size.tiny : hint_size == "Normal" ? size.normal : size.small
+
+                hint_lbl := label.new(bar_index + 3, is_long ? low : high, text=txt,
+                     style=label.style_label_left, color=h_col, textcolor=color.white,
+                     size=h_sz, textalign=text.align_left)
+
+                if hint_draw_lines
+                    int lx1 = bar_index
+                    int lx2 = bar_index + 12
+                    hint_sl_ln := line.new(lx1, sl_p,  lx2, sl_p,  xloc=xloc.bar_index,
+                         color=color.new(color.red, 20),   width=1, style=line.style_dashed)
+                    hint_t1_ln := line.new(lx1, tp1_p, lx2, tp1_p, xloc=xloc.bar_index,
+                         color=color.new(color.lime, 25),  width=1, style=line.style_dotted)
+                    hint_t2_ln := line.new(lx1, tp2_p, lx2, tp2_p, xloc=xloc.bar_index,
+                         color=color.new(color.green, 15), width=1, style=line.style_dotted)
 
 // ==========================================
 // БЛОК 9: DASHBOARD
