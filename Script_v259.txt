@@ -116,20 +116,20 @@ inp_break_req= input.float(0.5, "Сила пробоя (добавка к Z)",  
 
 group_smc_sup  = "🏛️ SMC Engine (Support)"
 inp_ob_len   = input.int(2, "MICRO (M1-M3) 	Cluster Size",  minval=1, maxval=12, group=group_smc_sup)
-pivot_left_mc_knt  = input.int(3500, "MICRO (M1-M3) Pivot Left Size",  minval=1, maxval=4000, group=group_smc_sup)
-pivot_right_mc_knt  = input.int(100, "MICRO (M1-M3) Pivot Right Size",  minval=1, maxval=4000, group=group_smc_sup)
+pivot_left_mc_knt  = input.int(35, "MICRO (M1-M3) Pivot Left Size",  minval=1, maxval=200, group=group_smc_sup)
+pivot_right_mc_knt  = input.int(5, "MICRO (M1-M3) Pivot Right Size",  minval=1, maxval=50, group=group_smc_sup)
 inp_ob_len1  = input.int(2, "SCALP (M5-M15) Cluster Size",    minval=1, maxval=12, group=group_smc_sup)
-pivot_left_sc_knt  = input.int(2000, "SCALP (M5-M15) Pivot Left Size",  minval=1, maxval=4000, group=group_smc_sup)
-pivot_right_sc_knt  = input.int(50, "SCALP (M5-M15) Pivot Right Size",  minval=1, maxval=4000, group=group_smc_sup)
+pivot_left_sc_knt  = input.int(50, "SCALP (M5-M15) Pivot Left Size",  minval=1, maxval=200, group=group_smc_sup)
+pivot_right_sc_knt  = input.int(3, "SCALP (M5-M15) Pivot Right Size",  minval=1, maxval=50, group=group_smc_sup)
 inp_ob_len2  = input.int(2, "DAY (M30-H1) Cluster Size",  minval=1, maxval=8,  group=group_smc_sup)
-pivot_left_day_knt  = input.int(4000, "DAY (M30-H1) Pivot Left Size",  minval=1, maxval=4000, group=group_smc_sup)
-pivot_right_day_knt  = input.int(50, "DAY (M30-H1) Pivot Right Size",  minval=1, maxval=4000, group=group_smc_sup)
+pivot_left_day_knt  = input.int(48, "DAY (M30-H1) Pivot Left Size",  minval=1, maxval=200, group=group_smc_sup)
+pivot_right_day_knt  = input.int(6, "DAY (M30-H1) Pivot Right Size",  minval=1, maxval=50, group=group_smc_sup)
 inp_ob_len3  = input.int(2, "SWING (H2-H4) Cluster Size",  minval=1, maxval=8,  group=group_smc_sup)
-pivot_left_sw_knt  = input.int(7, "SWING (H2-H4) Pivot Left Size",  minval=1, maxval=4000, group=group_smc_sup)
-pivot_right_sw_knt  = input.int(7, "SWING (H2-H4) Pivot Right Size",  minval=1, maxval=4000, group=group_smc_sup)
+pivot_left_sw_knt  = input.int(7, "SWING (H2-H4) Pivot Left Size",  minval=1, maxval=200, group=group_smc_sup)
+pivot_right_sw_knt  = input.int(7, "SWING (H2-H4) Pivot Right Size",  minval=1, maxval=50, group=group_smc_sup)
 inp_ob_len4  = input.int(2, "MACRO (D1+) Cluster Size",  minval=1, maxval=8,  group=group_smc_sup)
-pivot_left_mcr_knt  = input.int(7, "MACRO (D1+) Pivot Left Size",  minval=1, maxval=4000, group=group_smc_sup)
-pivot_right_mcr_knt  = input.int(7, "MACRO (D1+) Pivot Right Size",  minval=1, maxval=4000, group=group_smc_sup)
+pivot_left_mcr_knt  = input.int(7, "MACRO (D1+) Pivot Left Size",  minval=1, maxval=200, group=group_smc_sup)
+pivot_right_mcr_knt  = input.int(7, "MACRO (D1+) Pivot Right Size",  minval=1, maxval=50, group=group_smc_sup)
 inp_inv_dist = input.float(4900, "Очистка старых зон (× ATR)", minval=5.0, maxval=4999.0, step=5, group=group_smc_sup)
 
 group_smc_res  = "🏛️ SMC Engine (Resistance)"
@@ -283,6 +283,7 @@ hint_show_levels = input.bool(true, "Показывать уровни вход�
 hint_show_risk   = input.bool(true, "Показывать R:R, мат. ожидание и объём позиции", group=group_hint)
 hint_draw_lines  = input.bool(true, "Рисовать линии SL / TP1 / TP2 на текущем баре", group=group_hint)
 hint_size        = input.string("Small", "Размер текста подсказки", options=["Tiny","Small","Normal"], group=group_hint)
+hint_near_atr    = input.float(0.5, "Допуск близости к зоне (× ATR)", minval=0.0, maxval=3.0, step=0.1, group=group_hint, tooltip="На старших ТФ цена редко попадает внутрь зоны на последнем баре. Подсказка также показывается, когда цена находится в пределах этого расстояния от зоны. 0 = только внутри зоны.")
 
 group_tl  = "📐 Trend Lines"
 show_trendlines  = input.bool(true,   "Показывать линии тренда",                  group=group_tl)
@@ -851,10 +852,10 @@ max_bars_back(struct_l_i, BUF_FLAGS)
 
 if not na(ph_int)
     struct_h   := ph_int
-    struct_h_i := bar_index - p_pivot_right_res
+    struct_h_i := bar_index - _safe_pr_res
 if not na(pl_int)
     struct_l   := pl_int
-    struct_l_i := bar_index - p_pivot_right
+    struct_l_i := bar_index - _safe_pr
 
 // ── V258: Trend Channel — собственные пивоты (независимые от S/R зон) ────
 int _tl_safe_pl = math.max(1, math.min(tl_channel_min_bars, MAX_OFFSET - 1))
@@ -4008,18 +4009,24 @@ if barstate.islast
 
     if use_zone_hint and array.size(zone_db) > 0
         // ── 1. Выбор зоны, внутри которой сейчас находится цена ────────────
+        // V259+fix: допуск близости — на старших ТФ бар редко перекрывает зону,
+        // из-за чего подсказка не появлялась. Теперь учитывается расстояние в ATR.
+        float hint_tol = math.max(atr_val, syminfo.mintick) * hint_near_atr
         Zone  hz        = na
+        bool  hz_inside = false
         float best_rank = -1e10
         for z in zone_db
             if z.active and not z.mitigated and not na(z.top) and not na(z.bot)
                 bool inside = low <= z.top and high >= z.bot
-                if inside and z.score >= hint_min_score
+                bool near   = low <= z.top + hint_tol and high >= z.bot - hint_tol
+                if (inside or near) and z.score >= hint_min_score
                     // Приоритет: сильная зона, ближайшая к текущей цене
                     float dist_atr = math.abs(close - math.avg(z.top, z.bot)) / math.max(atr_val, syminfo.mintick)
-                    float rank     = z.score - dist_atr * 5.0
+                    float rank     = z.score - dist_atr * 5.0 + (inside ? 25.0 : 0.0)
                     if rank > best_rank
                         best_rank := rank
                         hz        := z
+                        hz_inside := inside
 
         if not na(hz)
             bool  is_long = hz.is_bull
@@ -4113,7 +4120,7 @@ if barstate.islast
                              (nz(hz.respect_count) > 0 ? "↩" + str.tostring(nz(hz.respect_count)) : "")
 
             if prob >= hint_min_prob
-                string txt = "💡 ЦЕНА В ЗОНЕ — " + side + "\n"
+                string txt = (hz_inside ? "💡 ЦЕНА В ЗОНЕ — " : "💡 ЦЕНА У ЗОНЫ — ") + side + "\n"
                 txt += "━━━━━━━━━━━━━━━━━━\n"
                 txt += "Рынок: " + mkt_dir + "  ADX " + str.tostring(htf_adx, "#") +
                        "  " + (current_session == "Quiet" ? "😴" : "⚡") + current_session + "\n"
