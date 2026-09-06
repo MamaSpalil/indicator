@@ -112,7 +112,6 @@ inp_vol_len  = input.int(40,   "Период сглаживания объема
 inp_eff_len  = input.int(5,    "Длина FER (Efficiency)",          minval=2,  maxval=20,  group=group_math)
 inp_z_min    = input.float(0.85,"Минимальный Z-Score",            minval=0.1,maxval=2.0, step=0.1, group=group_math)
 inp_z_max    = input.float(5.0, "Z-Score насыщения",              minval=1.0,maxval=10.0,step=0.1, group=group_math)
-inp_break_req= input.float(0.5, "Сила пробоя (добавка к Z)",     minval=0.1,maxval=3.0, step=0.1, group=group_math)
 
 group_smc_sup  = "🏛️ SMC Engine (Support)"
 inp_ob_len   = input.int(2, "MICRO (M1-M3) 	Cluster Size",  minval=1, maxval=12, group=group_smc_sup)
@@ -331,7 +330,6 @@ use_itf_align    = input.bool(true,  "Требовать ITF-тренд (про�
 use_mss_confirm  = input.bool(false, "Требовать MSS при входе", group=group_fut)
 min_confluence   = input.int(2, "Мин. факторов подтверждения входа", minval=1, maxval=6, group=group_fut)
 use_label_quality = input.bool(true, "Показывать Score/Tier на BUY/SELL", group=group_fut)
-use_htf_zone_align = input.bool(false,"HTF зона-алайнмент (экспериментально)", group=group_fut)
 use_major_bos    = input.bool(true,  "Major BOS фильтр (для SWING/MACRO)", group=group_fut)
 use_asset_adapt  = input.bool(true,  "Авто-адаптация к типу инструмента (crypto/fut/stock)", group=group_fut, tooltip="Корректирует ATR-множители, пороги объема и SL-паддинг под специфику инструмента: крипто, фьючерсы, акции, металлы.")
 use_pv_sizing    = input.bool(true,  "Учитывать Point Value при расчёте лота (фьючерсы)", group=group_fut, tooltip="Для фьючерсов (ES=50$/пт, GC=100$/пт) делит риск на SL*pointvalue. Для spot crypto = 1.")
@@ -683,7 +681,6 @@ if barstate.islast and auto_info
 // ==========================================
 // БЛОК 3: SESSION LOGIC & ADAPTIVE MACRO VOLUME
 // ==========================================
-int BUF_OHLCV = 4999
 int BUF_STATS = 1000
 int BUF_TREND = 800
 float global_vol_sma = ta.sma(volume, p_glob_vol_len)
@@ -1253,10 +1250,6 @@ fill(p_m, p_l, color=use_pd ? color.new(color.green, 90) : na)
 type PivotMetrics
     bool is_valid
     float strength
-    float curvature
-    float volume_factor
-    float fractal_depth    // НОВОЕ V249: фрактальная глубина
-    float isolation_score  // НОВОЕ V249: истинная изоляци
     int neighbor_count // V250: количество соседних пивотов
     float neighbor_strength // V250: суммарная сила соседних пивотов
     string debug_info
@@ -1301,7 +1294,7 @@ f_analyze_pivot_quality(int pid_idx, bool is_bull, int left_len, int right_len, 
 
     PivotMetrics res = na
     if do_calc
-        res := PivotMetrics.new(true, 50.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, "")
+        res := PivotMetrics.new(true, 50.0, 0, 0.0, "")
         if use_smart_piv
             int offset = bar_index - pid_idx
             int safe_limit = math.min(bar_index - 1, math.min(p_max_history - 1, MAX_OFFSET))
@@ -1313,7 +1306,6 @@ f_analyze_pivot_quality(int pid_idx, bool is_bull, int left_len, int right_len, 
                 res.debug_info := "Buffer Limit"
             else
                 float p_price = is_bull ? low[s_idx] : high[s_idx]
-                float p_vol   = volume[s_idx]
                 float h_atr   = _mem_atr[s_idx]
                 float loc_atr = nz(h_atr, syminfo.mintick)
 
@@ -1482,10 +1474,6 @@ f_analyze_pivot_quality(int pid_idx, bool is_bull, int left_len, int right_len, 
                 res.neighbor_count    := np_count
                 res.neighbor_strength := np_str_sum
                 res.strength        := final_sc
-                res.curvature       := curve_in_atr
-                res.volume_factor   := avg_cluster_rvol
-                res.fractal_depth   := fractal_raw
-                res.isolation_score := wick_s
                 res.is_valid        := final_sc >= min_piv_qual
                 res.debug_info      := "📐 PIVOT V250: " + str.tostring(final_sc, "#") + "/100" +
                                        "\nQC:" + str.tostring(curve_in_atr, "#.2") + " FD:" + str.tostring(fractal_raw, "#.2") +
@@ -1611,8 +1599,6 @@ f_update_health_bar(Zone z) =>
         // Позиция: внизу зоны для bull, вверху для bear (чтобы не перекрывать fib grid)
         float h_y = z.is_bull ? z.bot + (z.top - z.bot) * 0.05 : z.top - (z.top - z.bot) * 0.05
         // Длина: от created_at до created_at + (bar_index - created_at) * health_pct
-        int full_width = bar_index + 5 - z.created_at
-        int health_width = math.max(1, math.round(float(full_width) * health_pct))
         int h_x1 = math.max(z.created_at, bar_index - 25)
         int h_x2 = h_x1 + math.max(1, math.round(float(bar_index + 5 - h_x1) * health_pct))
         // Цвет: зелёный при 100% → жёлтый при 50% → красный при 0%
@@ -2209,7 +2195,6 @@ f_calc_fvg_on_candle(int impulse_idx, bool is_bull, float current_atr) =>
         float c2_o = open[o0]
         float c3_h = high[om]
         float c3_l = low[om]
-        float c3_c = close[om]
         float c3_o = open[om]
         float tol  = syminfo.mintick * 0.5
 
@@ -2407,20 +2392,6 @@ f_multi_pattern_bonus(float base_score, int condition_count) =>
         5 => 0.50
         => 0.0
     base_score * bonus_pct
-
-f_calc_efficiency(int idx, int len) =>
-    // V253: ta.highest/lowest вместо ручного цикла
-    int   win   = math.min(math.max(len, 1), MAX_BUFF)
-    float h_max = ta.highest(high, win)
-    float l_min = ta.lowest(low, win)
-    if len == 0
-        0.0
-    else
-        int safe_idx  = f_clamp(idx, MAX_OFFSET)
-        int safe_back = f_clamp(idx + len, MAX_OFFSET)
-        float net_change = math.abs(close[safe_idx] - close[safe_back])
-        float approx_path = h_max - l_min
-        approx_path != 0.0 ? (net_change / approx_path) : 0.0
 
 f_get_sigmoid_score(float val, float min_v, float max_v, float weight) =>
     if na(val)
@@ -2645,6 +2616,9 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
         float z_val            = 0.0
         float found_ft         = na
         float found_fb         = na
+        // V261: лучший найденный размер гэпа среди просканированных свечей —
+        // переиспользуется в диагностике отказа вместо повторного расчёта FVG
+        float scanned_fvg_size = 0.0
 
         int loop_limit = math.max(0, p_fvg_lookback - 1)
         for i = 0 to loop_limit
@@ -2665,6 +2639,7 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                 bool  v_gate = not use_vol_flt or (check_vol >= math.max(dyn_v, p_fvg_rvol_min))
                 if z_gate and v_gate
                     [f_sz_temp, ft, fb, g_type_temp] = f_calc_fvg_on_candle(idx_check, is_bull, current_step_atr)
+                    scanned_fvg_size := math.max(scanned_fvg_size, nz(f_sz_temp))
                     bool has_real_fvg = f_sz_temp >= dyn_fvg and f_sz_temp <= p_fvg_max
                     if has_real_fvg
                         best_impulse_idx := idx_check
@@ -2803,8 +2778,6 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                 final_score += f_multi_pattern_bonus(base_score_ob, ob_cond_count)
             // V254: Гарантия что score не превышает потолок 150 после всех бонусов
             final_score := math.min(final_score, 150.0)
-            float current_step_atr = nz(_mem_atr[safe_oc], 1.0)
-            [f_sz, ft, fb, tmp_type] = f_calc_fvg_on_candle(best_impulse_idx, is_bull, current_step_atr)
 
             if use_score and final_score < p_min_score
                 if debug_mode and array.size(log_arr) > 0
@@ -2865,11 +2838,7 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                 if use_score and final_score < p_min_score
                     float deficit = p_min_score - final_score
                     err_log.push("📉 SCORE: " + str.tostring(final_score, "#.0") + " (Не хватает: " + str.tostring(deficit, "#.0") + ")")
-                int off_err = bar_index - best_impulse_idx
-                int safe_err = f_clamp(off_err, MAX_OFFSET)
-                float atr_err_step = nz(_mem_atr[safe_err], 1.0)
-                [f_sz_err, ft_err, fb_err, err_type] = f_calc_fvg_on_candle(best_impulse_idx, is_bull, atr_err_step)
-                float real_fvg = na(f_sz_err) ? 0.0 : f_sz_err
+                float real_fvg = scanned_fvg_size
                 if real_fvg < dyn_fvg
                     err_log.push("📏 GAP: " + str.tostring(real_fvg, "#.######") + " ATR < Мин. " + str.tostring(dyn_fvg, "#.######") + " ATR")
                 if diag_z_val < dyn_z
@@ -3285,9 +3254,6 @@ f_create_new_zones() =>
     
     bool allow        = (not use_adx or not global_flat)
     bool confirmed_bar = barstate.isconfirmed
-    float mu_v   = _sf_mu
-    float sig_v  = _sf_sig
-    float eta_v  = _sf_eta
     float prob_v = _sf_prob
     int   samp_n = _sf_n
     float discount = 0.0
@@ -3885,18 +3851,6 @@ float d_discount = 0.0
 if d_n >= stoch_min_val and d_prob > 80.0
     d_discount := math.min(0.25, (d_prob - 80.0) / 19.9 * 0.25)
 
-f_pinbar(bool is_bull) =>
-    float candle_range = high - low
-    float body  = math.abs(close - open)
-    float upper = high - math.max(close, open)
-    float lower = math.min(close, open) - low
-    bool  is_pin = false
-    if candle_range > 0
-        if is_bull
-            is_pin := (lower > body * inp_pin_ratio) and (upper < body)
-        else
-            is_pin := (upper > body * inp_pin_ratio) and (lower < body)
-    is_pin
 // ── V254: Подсчёт пин-баров в окне lookback рядом с зоной ────────────────
 // Сканирует последние `lookback` свечей и считает количество пин-баров
 // в направлении `is_bull`. Для подтверждения зоны требуется ≥ inp_min_pinbars.
@@ -4140,7 +4094,6 @@ if array.size(zone_db) > 0 and is_actionable_bar
                                 entry_comment := "⚡ ChoCh Confirm"
 
                     if do_trade
-                        string fvg_out   = (z.fvg_type != "None" and z.fvg_type != "") ? z.fvg_type : "No Gap"
                         string msg_entry = '{"action":"' + (z.is_bull ? "BUY" : "SELL") +
                              '","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period +
                              '","entry":' + str.tostring(en_price, format.mintick) +
