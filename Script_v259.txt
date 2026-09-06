@@ -273,6 +273,35 @@ respect_bonus      = input.float(6.0,  "Бонус Score за уважённое
 max_fill_invalid   = input.float(0.85, "Инвалидация зоны при выработке (доля)", minval=0.5, maxval=1.0, step=0.05, group=group_vis3, tooltip="Если цена проникла в зону глубже указанной доли её высоты, зона считается отработанной и удаляется (даже без пробоя закрытием).")
 use_max_fill_invalid = input.bool(true, "Включить инвалидацию по глубине выработки", group=group_vis3)
 
+// ── V260: MTF Zone Overlay — зоны со старших ТФ на текущем графике ─────────
+group_mtf = "🔭 MTF Зоны (старшие ТФ на младшем)"
+use_mtf_zones     = input.bool(true, "Показывать зоны старших ТФ", group=group_mtf, tooltip="Проецирует зоны поддержки/сопротивления со старших таймфреймов на текущий график. Пример: на 1м видны зоны 1м + 3м, на 3м — 3м + 5м, на 5м — 5м + 15м и т.д.")
+mtf_auto          = input.bool(true, "Авто-выбор старших ТФ (лестница)", group=group_mtf, tooltip="Лестница: 1м→3м→5м→15м→30м→1ч→4ч→D→W→M. Отключите, чтобы задать ТФ вручную.")
+mtf_levels        = input.int(2, "Сколько ступеней вверх показывать", minval=1, maxval=2, group=group_mtf, tooltip="1 = только ближайший старший ТФ. 2 = ещё и следующий за ним (например, на 1м: 3м и 5м).")
+mtf_tf1_manual    = input.timeframe("3", "Ручной ТФ (ступень 1)", group=group_mtf)
+mtf_tf2_manual    = input.timeframe("5", "Ручной ТФ (ступень 2)", group=group_mtf)
+mtf_pivot_left    = input.int(5, "Пивот: левое плечо (старший ТФ)",  minval=1, maxval=50, group=group_mtf)
+mtf_pivot_right   = input.int(5, "Пивот: правое плечо (старший ТФ)", minval=1, maxval=50, group=group_mtf)
+mtf_zone_atr      = input.float(0.5, "Толщина зоны старшего ТФ (× ATR)", minval=0.05, maxval=3.0, step=0.05, group=group_mtf)
+mtf_max_zones     = input.int(8, "Макс. зон старших ТФ на графике", minval=1, maxval=30, group=group_mtf)
+mtf_max_dist_atr  = input.float(25.0, "Удалять зону дальше N × ATR от цены", minval=1.0, maxval=500.0, step=1.0, group=group_mtf)
+c_mtf_sup         = input.color(#00FFA3, "Цвет: MTF поддержка",    group=group_mtf, tooltip="Более чёткий (яркий) цвет, чтобы отличать зоны старшего ТФ от локальных.")
+c_mtf_res         = input.color(#FF2D95, "Цвет: MTF сопротивление", group=group_mtf)
+mtf_transp        = input.int(78, "Заливка MTF-зоны (% прозрачности)", minval=30, maxval=97, group=group_mtf)
+mtf_border_w      = input.int(2, "Толщина рамки MTF-зоны", minval=1, maxval=4, group=group_mtf)
+mtf_show_labels   = input.bool(true, "Подписи MTF-зон", group=group_mtf)
+
+group_mtf_conf = "🔗 MTF Confluence (совпадение зон)"
+use_mtf_conf      = input.bool(true, "Начислять баллы за совпадение с зоной старшего ТФ", group=group_mtf_conf, tooltip="Если локальная зона перекрывается зоной старшего ТФ того же направления — она получает дополнительные баллы Score и более чёткий цвет.")
+mtf_conf_ratio    = input.float(0.30, "Мин. доля перекрытия для зачёта", minval=0.05, maxval=1.0, step=0.05, group=group_mtf_conf)
+mtf_conf_full     = input.float(0.80, "Доля перекрытия для «полного совпадения»", minval=0.5, maxval=1.0, step=0.05, group=group_mtf_conf, tooltip="При полном совпадении бонус увеличивается (множитель ниже) и зона подсвечивается ярче.")
+mtf_conf_bonus    = input.float(12.0, "Бонус Score за совпадение (ступень 1)", minval=0.0, maxval=50.0, step=1.0, group=group_mtf_conf)
+mtf_conf_bonus2   = input.float(8.0,  "Бонус Score за совпадение (ступень 2)", minval=0.0, maxval=50.0, step=1.0, group=group_mtf_conf)
+mtf_full_mult     = input.float(1.5, "Множитель бонуса при полном совпадении", minval=1.0, maxval=3.0, step=0.1, group=group_mtf_conf)
+mtf_conf_cap      = input.float(35.0, "Максимальный суммарный MTF-бонус", minval=0.0, maxval=80.0, step=1.0, group=group_mtf_conf)
+mtf_conf_visual   = input.bool(true, "Улучшать цвет/рамку зоны при совпадении", group=group_mtf_conf)
+mtf_conf_alert    = input.bool(true, "Алерт при входе цены в MTF-конфлюэнс зону", group=group_mtf_conf)
+
 // ── V259+: Real-Time Zone Hint (подсказка статистики на текущем баре) ──────
 group_hint = "💡 Real-Time Zone Hint (V259+)"
 use_zone_hint    = input.bool(true, "Подсказка статистики при входе цены в зону", group=group_hint, tooltip="Когда цена на текущем (последнем) баре находится внутри активной зоны, выводится живая подсказка: направление рынка, сила зоны, сторона сделки (лонг/шорт), вероятность успеха и ориентировочные точки выхода.")
@@ -606,6 +635,28 @@ f_get_itf() =>
 string calc_tf  = use_auto_htf ? f_get_tf()  : man_htf
 string calc_itf = use_auto_htf ? f_get_itf() : man_htf
 
+// ── V260: лестница таймфреймов для MTF-зон ────────────────────────────────
+// 1м → 3м → 5м → 15м → 30м → 1ч → 4ч → D → W → M
+f_next_tf_mins(float m) =>
+    float r = (m <= 1.0    ? 3.0     :
+               m <= 3.0    ? 5.0     :
+               m <= 5.0    ? 15.0    :
+               m <= 15.0   ? 30.0    :
+               m <= 30.0   ? 60.0    :
+               m <= 60.0   ? 240.0   :
+               m <= 240.0  ? 1440.0  :
+               m <= 1440.0 ? 10080.0 : 43200.0)
+    r
+
+f_mins_to_tf(float m) =>
+    string s = (m < 1440.0 ? str.tostring(math.max(1, int(math.round(m)))) : m < 10080.0 ? "D" : m < 43200.0 ? "W" : "M")
+    s
+
+float  mtf_mins1 = f_next_tf_mins(tf_mins)
+float  mtf_mins2 = f_next_tf_mins(mtf_mins1)
+string mtf_tf1   = mtf_auto ? f_mins_to_tf(mtf_mins1) : mtf_tf1_manual
+string mtf_tf2   = mtf_auto ? f_mins_to_tf(mtf_mins2) : mtf_tf2_manual
+
 int p_max_history = 0
 if hist_mode == "Auto-Scale"
     int auto_hist = is_micro ? math.min(2500, 4998) : is_scalp  ? math.min(3500, 4998) : is_day    ? math.min(4200, 4998) : is_swing  ? math.min(4800, 4998) : math.min(4998, 4998)
@@ -755,6 +806,37 @@ max_bars_back(htf_ema, BUF_TREND)
 max_bars_back(htf_adx, BUF_TREND)
 max_bars_back(itf_ema, BUF_TREND)
 max_bars_back(itf_adx, BUF_TREND)
+
+// ── V260: источник зон старшего ТФ (пивот + толщина по ATR) ───────────────
+// Возвращает последнюю подтверждённую пивот-зону вверх/вниз и её порядковый
+// номер. Смена номера на младшем ТФ = появилась новая зона старшего ТФ.
+f_mtf_zone_src(int pl, int pr, float thick_mult, int alen) =>
+    float a  = ta.atr(alen)
+    float ph = ta.pivothigh(high, pl, pr)
+    float pv = ta.pivotlow(low,   pl, pr)
+    var float res_top = na
+    var float res_bot = na
+    var int   res_id  = 0
+    var float sup_top = na
+    var float sup_bot = na
+    var int   sup_id  = 0
+    float thick = math.max(nz(a) * thick_mult, syminfo.mintick)
+    if not na(ph)
+        float body_hi = math.max(open[pr], close[pr])
+        res_top := ph
+        res_bot := math.min(math.max(body_hi, ph - thick), ph - syminfo.mintick)
+        res_id  += 1
+    if not na(pv)
+        float body_lo = math.min(open[pr], close[pr])
+        sup_bot := pv
+        sup_top := math.max(math.min(body_lo, pv + thick), pv + syminfo.mintick)
+        sup_id  += 1
+    [res_top, res_bot, res_id, sup_top, sup_bot, sup_id]
+
+[m1_res_top, m1_res_bot, m1_res_id, m1_sup_top, m1_sup_bot, m1_sup_id] =
+     request.security(syminfo.tickerid, mtf_tf1, f_mtf_zone_src(mtf_pivot_left, mtf_pivot_right, mtf_zone_atr, atr_len), lookahead=barmerge.lookahead_off)
+[m2_res_top, m2_res_bot, m2_res_id, m2_sup_top, m2_sup_bot, m2_sup_id] =
+     request.security(syminfo.tickerid, mtf_tf2, f_mtf_zone_src(mtf_pivot_left, mtf_pivot_right, mtf_zone_atr, atr_len), lookahead=barmerge.lookahead_off)
 
 float vwap_val = ta.vwap(hlc3)
 max_bars_back(vwap_val, BUF_TREND)
@@ -1460,6 +1542,10 @@ type Zone
     line         eq_line           // EQ (50%) линия
     box          mitig_box         // подсветка выработанной части
     float        fvg_fill          // доля заполнения FVG (0..1)
+    // V260: MTF confluence
+    int          mtf_conf          // 0 — нет; 1 — совпала с одной ступенью; 2 — с обеими
+    bool         mtf_full          // полное совпадение хотя бы с одной MTF-зоной
+    float        mtf_bonus         // сколько баллов уже начислено за MTF-совпадение
 
 var array<Zone> zone_db = array.new<Zone>()
 var Zone _dummy_z = Zone.new()
@@ -1873,6 +1959,15 @@ method update(Zone this) =>
                 int   new_t        = math.min(97, base_t + extra_transp)
                 c_bg_z := color.new(color.rgb(color.r(c_bg_z), color.g(c_bg_z), color.b(c_bg_z)), new_t)
 
+        // V260: MTF-конфлюэнс — зона становится заметно чётче (плотнее заливка,
+        // яркая рамка), чем выше совпадение со старшими ТФ.
+        if mtf_conf_visual and nz(this.mtf_conf) > 0
+            int boost = nz(this.mtf_conf) * 8 + (this.mtf_full ? 8 : 0)
+            int bg_t  = math.max(45, int(color.t(c_bg_z)) - boost)
+            c_bg_z := color.new(color.rgb(color.r(c_bg_z), color.g(c_bg_z), color.b(c_bg_z)), bg_t)
+            c_bd_z := color.new(color.from_gradient(math.min(nz(this.mtf_conf), 2), 0, 2, c_bd_z,
+                                 this.is_bull ? c_mtf_sup : c_mtf_res), 0)
+
         string idm_txt    = this.idm_swept ? " [IDM✓]" : ""
         string emoji      = this.score >= 120 ? "🔥" : this.score >= 100 ? "💎" : this.score >= 80 ? "🟢" : this.score >= 40 ? "⚪" : "⚓"
         string z_prefix   = this.z_type == "BB" ? (this.is_bull ? "Brk+ " : "Brk- ") :
@@ -1891,11 +1986,19 @@ method update(Zone this) =>
                     touch_str += "↩" + str.tostring(this.respect_count)
                 if nz(this.max_fill) > 0.02
                     touch_str += " " + str.tostring(int(math.round(nz(this.max_fill) * 100.0))) + "%"
-        string lbl_txt    = z_prefix + emoji + " " + str.tostring(this.score, "#.0") + abs_str + touch_str + idm_txt + fvg_str
+        // V260: маркер совпадения со старшим ТФ
+        string mtf_str = ""
+        if nz(this.mtf_conf) > 0
+            mtf_str := this.mtf_full ? " ⧉⧉MTF" : " ⧉MTF"
+            if nz(this.mtf_bonus) > 0
+                mtf_str += "+" + str.tostring(this.mtf_bonus, "#")
+        string lbl_txt    = z_prefix + emoji + " " + str.tostring(this.score, "#.0") + abs_str + touch_str + mtf_str + idm_txt + fvg_str
 
         int bd_w = this.z_type == "BB" ? 2 : 1
         if use_fresh_border and nz(this.touch_count) == 0 and this.z_type != "BB"
             bd_w := 2
+        if mtf_conf_visual and nz(this.mtf_conf) > 0
+            bd_w := math.min(4, bd_w + nz(this.mtf_conf))
 
         box.set_border_color(this.gfx, c_bd_z)
         box.set_bgcolor(this.gfx, c_bg_z)
@@ -3162,7 +3265,8 @@ f_make_zone(int origin, float t, float b, bool bull, string ztype, float sc, str
         glow_line_top=na, glow_line_bot=na, health_line=na,
         bb_arrow_lbl=na, fvg_connector=na, rz_zigzag_lines=array.new<line>(),
         touch_count=0, respect_count=0, max_fill=0.0, is_fresh=true, was_inside=false,
-        eq_line=na, mitig_box=na, fvg_fill=0.0)
+        eq_line=na, mitig_box=na, fvg_fill=0.0,
+        mtf_conf=0, mtf_full=false, mtf_bonus=0.0)
     n
 
 f_create_new_zones() =>
@@ -3578,6 +3682,191 @@ if barstate.isconfirmed
     _sf_eta  := _e
     _sf_prob := _p
     _sf_n    := _nn
+
+// ==========================================
+// БЛОК 7c: MTF ZONE OVERLAY (V260)
+// Зоны старших ТФ проецируются на текущий график отдельным (более чётким)
+// цветом. При совпадении с локальной зоной обе получают дополнительные баллы.
+// ==========================================
+type HtfZone
+    box    gfx
+    float  top
+    float  bot
+    bool   is_bull
+    string tf
+    int    lvl          // 1 = ближайший старший ТФ, 2 = следующий за ним
+    int    created_at
+    float  base_score
+    float  score
+    int    conf_count   // сколько локальных зон совпало
+    bool   full_conf    // было полное совпадение
+    bool   touched
+    bool   active
+
+var array<HtfZone> htf_db = array.new<HtfZone>()
+
+f_mtf_colors(HtfZone hz) =>
+    color base = hz.is_bull ? c_mtf_sup : c_mtf_res
+    int   t    = mtf_transp + (hz.lvl == 2 ? 6 : 0) - math.min(nz(hz.conf_count), 3) * 7 - (hz.full_conf ? 6 : 0)
+    color bg   = color.new(base, math.max(30, math.min(97, t)))
+    color bd   = color.new(base, 0)
+    [bg, bd]
+
+f_mtf_draw(HtfZone hz) =>
+    if hz.active and not na(hz.gfx)
+        [bg, bd] = f_mtf_colors(hz)
+        box.set_top(hz.gfx, hz.top)
+        box.set_bottom(hz.gfx, hz.bot)
+        box.set_right(hz.gfx, bar_index + 12)
+        box.set_bgcolor(hz.gfx, bg)
+        box.set_border_color(hz.gfx, bd)
+        box.set_border_width(hz.gfx, math.min(4, mtf_border_w + (nz(hz.conf_count) > 0 ? 1 : 0)))
+        box.set_border_style(hz.gfx, hz.lvl == 1 ? line.style_solid : line.style_dashed)
+        if mtf_show_labels
+            string star = nz(hz.conf_count) > 0 ? (hz.full_conf ? " ⭐⭐" : " ⭐") + str.tostring(hz.conf_count) : ""
+            box.set_text(hz.gfx, "MTF " + hz.tf + (hz.is_bull ? " ▲" : " ▼") + " " + str.tostring(hz.score, "#") + star)
+            box.set_text_color(hz.gfx, bd)
+            box.set_text_halign(hz.gfx, text.align_left)
+            box.set_text_valign(hz.gfx, hz.is_bull ? text.align_bottom : text.align_top)
+            box.set_text_size(hz.gfx, size.small)
+        else
+            box.set_text(hz.gfx, "")
+
+f_mtf_add(float t, float b, bool bull, string tf_str, int lvl) =>
+    if not na(t) and not na(b) and t > b
+        bool merged = false
+        if array.size(htf_db) > 0
+            for i = 0 to array.size(htf_db) - 1
+                HtfZone e = array.get(htf_db, i)
+                if not merged and e.active and e.is_bull == bull and e.lvl == lvl
+                    float ov = math.min(e.top, t) - math.max(e.bot, b)
+                    float mh = math.max(math.min(e.top - e.bot, t - b), syminfo.mintick)
+                    if ov > 0 and (ov / mh) >= 0.5
+                        // Повторное подтверждение того же уровня старшим ТФ → усиление
+                        e.top        := math.max(e.top, t)
+                        e.bot        := math.min(e.bot, b)
+                        e.base_score := math.min(e.base_score + 10.0, 110.0)
+                        merged       := true
+        if not merged
+            box bx = box.new(math.max(0, bar_index - 2), t, bar_index + 12, b, xloc=xloc.bar_index,
+                 border_color=color.new(bull ? c_mtf_sup : c_mtf_res, 0),
+                 bgcolor=color.new(bull ? c_mtf_sup : c_mtf_res, mtf_transp))
+            HtfZone hzn = HtfZone.new(gfx=bx, top=t, bot=b, is_bull=bull, tf=tf_str, lvl=lvl,
+                 created_at=bar_index, base_score=60.0, score=60.0,
+                 conf_count=0, full_conf=false, touched=false, active=true)
+            array.push(htf_db, hzn)
+    false
+
+f_mtf_cleanup() =>
+    float atr_safe = math.max(atr_val, syminfo.mintick)
+    if array.size(htf_db) > 0
+        for i = array.size(htf_db) - 1 to 0
+            HtfZone e = array.get(htf_db, i)
+            float dist    = e.is_bull ? (e.bot - close) / atr_safe : (close - e.top) / atr_safe
+            bool  too_far = not na(dist) and dist > mtf_max_dist_atr
+            bool  broken  = e.is_bull ? (close < e.bot - atr_safe * 0.25) : (close > e.top + atr_safe * 0.25)
+            bool  expired = (bar_index - e.created_at) > zone_max_age
+            if too_far or broken or expired or not e.active
+                box.delete(e.gfx)
+                array.remove(htf_db, i)
+            else
+                if not e.touched and high >= e.bot and low <= e.top
+                    e.touched := true
+                    if mtf_conf_alert
+                        alert("MTF зона " + e.tf + (e.is_bull ? " (поддержка)" : " (сопротивление)") +
+                             " | Score " + str.tostring(e.score, "#") +
+                             " | конфлюэнс: " + str.tostring(e.conf_count), alert.freq_once_per_bar)
+    // Лимит количества: удаляем самые дальние от цены зоны
+    while array.size(htf_db) > mtf_max_zones
+        int   worst   = 0
+        float worst_d = -1.0
+        for i = 0 to array.size(htf_db) - 1
+            HtfZone e = array.get(htf_db, i)
+            float d = math.abs((e.top + e.bot) / 2.0 - close)
+            if d > worst_d
+                worst_d := d
+                worst   := i
+        HtfZone rem = array.get(htf_db, worst)
+        box.delete(rem.gfx)
+        array.remove(htf_db, worst)
+
+f_mtf_confluence() =>
+    // Сброс счётчиков совпадений (пересчитываются каждый закрытый бар)
+    if array.size(htf_db) > 0
+        for i = 0 to array.size(htf_db) - 1
+            HtfZone e = array.get(htf_db, i)
+            e.conf_count := 0
+            e.full_conf  := false
+
+    if array.size(zone_db) > 0
+        for zi = 0 to array.size(zone_db) - 1
+            Zone z = array.get(zone_db, zi)
+            int   best_lvl = 0
+            bool  full_hit = false
+            float bonus    = 0.0
+            if z.active and use_mtf_conf and use_mtf_zones and array.size(htf_db) > 0
+                for hi = 0 to array.size(htf_db) - 1
+                    HtfZone e = array.get(htf_db, hi)
+                    if e.active and e.is_bull == z.is_bull
+                        float ov    = math.min(z.top, e.top) - math.max(z.bot, e.bot)
+                        float mh    = math.max(math.min(z.top - z.bot, e.top - e.bot), syminfo.mintick)
+                        float ratio = ov > 0 ? ov / mh : 0.0
+                        if ratio >= mtf_conf_ratio
+                            bool full = ratio >= mtf_conf_full
+                            bonus    += (e.lvl == 1 ? mtf_conf_bonus : mtf_conf_bonus2) * (full ? mtf_full_mult : 1.0)
+                            best_lvl := math.max(best_lvl, e.lvl)
+                            full_hit := full_hit or full
+                            e.conf_count += 1
+                            e.full_conf  := e.full_conf or full
+            bonus := math.min(bonus, mtf_conf_cap)
+            float delta = bonus - nz(z.mtf_bonus)
+            if delta != 0.0
+                z.score     := math.max(0.0, math.min(z.score + delta, 150.0))
+                z.mtf_bonus := bonus
+                if z.score >= 100
+                    z.tier := "BEST"
+                else if z.score >= 80
+                    z.tier := "STRONG"
+            z.mtf_conf := best_lvl
+            z.mtf_full := full_hit
+
+    // Итоговый Score MTF-зоны: база + вклад совпадений
+    if array.size(htf_db) > 0
+        for i = 0 to array.size(htf_db) - 1
+            HtfZone e = array.get(htf_db, i)
+            e.score := math.min(150.0, e.base_score + 8.0 * math.min(e.conf_count, 4) + (e.full_conf ? 15.0 : 0.0))
+
+var int m1_res_prev = 0
+var int m1_sup_prev = 0
+var int m2_res_prev = 0
+var int m2_sup_prev = 0
+
+if use_mtf_zones
+    if barstate.isconfirmed
+        if int(nz(m1_res_id)) != m1_res_prev
+            m1_res_prev := int(nz(m1_res_id))
+            f_mtf_add(m1_res_top, m1_res_bot, false, mtf_tf1, 1)
+        if int(nz(m1_sup_id)) != m1_sup_prev
+            m1_sup_prev := int(nz(m1_sup_id))
+            f_mtf_add(m1_sup_top, m1_sup_bot, true, mtf_tf1, 1)
+        if mtf_levels >= 2
+            if int(nz(m2_res_id)) != m2_res_prev
+                m2_res_prev := int(nz(m2_res_id))
+                f_mtf_add(m2_res_top, m2_res_bot, false, mtf_tf2, 2)
+            if int(nz(m2_sup_id)) != m2_sup_prev
+                m2_sup_prev := int(nz(m2_sup_id))
+                f_mtf_add(m2_sup_top, m2_sup_bot, true, mtf_tf2, 2)
+        f_mtf_cleanup()
+        f_mtf_confluence()
+    if array.size(htf_db) > 0
+        for i = 0 to array.size(htf_db) - 1
+            f_mtf_draw(array.get(htf_db, i))
+else
+    if array.size(htf_db) > 0
+        for i = array.size(htf_db) - 1 to 0
+            HtfZone e = array.get(htf_db, i)
+            box.delete(e.gfx)
+            array.remove(htf_db, i)
 
 f_mng()
 
@@ -4049,9 +4338,12 @@ if barstate.islast
             bool f_adx    = htf_adx >= p_adx_lim
             bool f_sess   = in_brokezone
             bool f_fresh  = nz(hz.touch_count) == 0
+            // V260: совпадение со старшим ТФ
+            bool f_mtf    = nz(hz.mtf_conf) > 0
 
             int conf_cnt = (f_htf?1:0) + (f_itf?1:0) + (f_vwap?1:0) + (f_major?1:0) + (f_rsi?1:0) +
-                           (f_pd?1:0) + (f_idm?1:0) + (f_fvg?1:0) + (f_vol?1:0) + (f_adx?1:0) + (f_sess?1:0)
+                           (f_pd?1:0) + (f_idm?1:0) + (f_fvg?1:0) + (f_vol?1:0) + (f_adx?1:0) + (f_sess?1:0) +
+                           (f_mtf?1:0)
 
             // ── 3. Вероятность успешной сделки (взвешенная модель) ─────────
             float prob = 42.0
@@ -4071,6 +4363,7 @@ if barstate.islast
             prob += math.min(15.0, math.max(-6.0, (hz.score - 60.0) / 60.0 * 15.0))
             prob += f_fresh ? 10.0 : -math.min(12.0, 3.0 * float(nz(hz.touch_count)))
             prob += math.min(8.0, 4.0 * float(nz(hz.respect_count)))
+            prob += f_mtf ? (hz.mtf_full ? 9.0 : 6.0) : 0.0
             prob -= 12.0 * depth
             // Статистический прогноз движка (если накоплена выборка)
             if d_n >= stoch_min_val and not na(d_prob)
@@ -4126,7 +4419,7 @@ if barstate.islast
                        "  " + (current_session == "Quiet" ? "😴" : "⚡") + current_session + "\n"
                 txt += "Зона: " + z_name + " " + hz.tier + " " + str.tostring(hz.score, "#") + "pts  " + fresh_s + "\n"
                 txt += "Выработка: " + str.tostring(int(math.round(depth * 100.0))) + "%  |  Совпало факторов: " +
-                       str.tostring(conf_cnt) + "/11\n"
+                       str.tostring(conf_cnt) + "/12\n"
                 txt += "Вероятность успеха: " + str.tostring(prob, "#.0") + "%  " +
                        (d_n >= stoch_min_val ? "(выборка " + str.tostring(d_n) + ")" : "(мало данных)") + "\n"
                 txt += verdict + "\n"
@@ -4139,6 +4432,8 @@ if barstate.islast
                            "  RVOL " + str.tostring(rvol, "#.0") + " " + f_ok_ico(f_vol) +
                            "  P/D " + f_ok_ico(f_pd) + "\n"
                     txt += "IDM " + f_ok_ico(f_idm) + "  FVG " + (f_fvg ? "✅ " + hz.fvg_type : "❌") + "\n"
+                    txt += "MTF " + (f_mtf ? (hz.mtf_full ? "⧉⧉ полное совпадение " : "⧉ совпадение ") +
+                           (nz(hz.mtf_conf) >= 2 ? mtf_tf2 : mtf_tf1) + " (+" + str.tostring(nz(hz.mtf_bonus), "#") + "pts)" : "❌") + "\n"
 
                 if hint_show_levels
                     txt += "━━━━━━━━━━━━━━━━━━\n"
