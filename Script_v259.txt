@@ -807,25 +807,30 @@ f_mtf_zone_src(int pl, int pr, float thick_mult, int alen) =>
     var float res_top = na
     var float res_bot = na
     var int   res_id  = 0
+    var int   res_t   = na
     var float sup_top = na
     var float sup_bot = na
     var int   sup_id  = 0
+    var int   sup_t   = na
     float thick = math.max(nz(a) * thick_mult, syminfo.mintick)
     if not na(ph)
         float body_hi = math.max(open[pr], close[pr])
         res_top := ph
         res_bot := math.min(math.max(body_hi, ph - thick), ph - syminfo.mintick)
         res_id  += 1
+        // Время бара-экстремума старшего ТФ: к нему привязывается левый край зоны
+        res_t   := time[pr]
     if not na(pv)
         float body_lo = math.min(open[pr], close[pr])
         sup_bot := pv
         sup_top := math.max(math.min(body_lo, pv + thick), pv + syminfo.mintick)
         sup_id  += 1
-    [res_top, res_bot, res_id, sup_top, sup_bot, sup_id]
+        sup_t   := time[pr]
+    [res_top, res_bot, res_id, res_t, sup_top, sup_bot, sup_id, sup_t]
 
-[m1_res_top, m1_res_bot, m1_res_id, m1_sup_top, m1_sup_bot, m1_sup_id] =
+[m1_res_top, m1_res_bot, m1_res_id, m1_res_t, m1_sup_top, m1_sup_bot, m1_sup_id, m1_sup_t] =
      request.security(syminfo.tickerid, mtf_tf1, f_mtf_zone_src(mtf_pivot_left, mtf_pivot_right, mtf_zone_atr, atr_len), lookahead=barmerge.lookahead_off)
-[m2_res_top, m2_res_bot, m2_res_id, m2_sup_top, m2_sup_bot, m2_sup_id] =
+[m2_res_top, m2_res_bot, m2_res_id, m2_res_t, m2_sup_top, m2_sup_bot, m2_sup_id, m2_sup_t] =
      request.security(syminfo.tickerid, mtf_tf2, f_mtf_zone_src(mtf_pivot_left, mtf_pivot_right, mtf_zone_atr, atr_len), lookahead=barmerge.lookahead_off)
 
 float vwap_val = ta.vwap(hlc3)
@@ -3594,6 +3599,7 @@ type HtfZone
     string tf
     int    lvl          // 1 = ближайший старший ТФ, 2 = следующий за ним
     int    created_at
+    int    left_t       // время бара-экстремума старшего ТФ (якорь левого края)
     float  base_score
     float  score
     int    conf_count   // сколько локальных зон совпало
@@ -3602,6 +3608,18 @@ type HtfZone
     bool   active
 
 var array<HtfZone> htf_db = array.new<HtfZone>()
+
+// Время первого бара графика и длительность бара — нужны для привязки зон к барам
+var int _first_bar_t = na
+if na(_first_bar_t)
+    _first_bar_t := time
+int _bar_ms = int(math.max(nz(time - time[1], 60000), 1))
+
+// Левый край зоны = бар-экстремум старшего ТФ, но не левее начала истории графика
+f_mtf_left_t(int anchor_t) =>
+    int a = na(anchor_t) ? time : anchor_t
+    int f = nz(_first_bar_t, a)
+    a < f ? f : a
 
 f_mtf_colors(HtfZone hz) =>
     color base = hz.is_bull ? c_mtf_sup : c_mtf_res
@@ -3615,7 +3633,8 @@ f_mtf_draw(HtfZone hz) =>
         [bg, bd] = f_mtf_colors(hz)
         box.set_top(hz.gfx, hz.top)
         box.set_bottom(hz.gfx, hz.bot)
-        box.set_right(hz.gfx, bar_index + 12)
+        box.set_left(hz.gfx, f_mtf_left_t(hz.left_t))
+        box.set_right(hz.gfx, time + _bar_ms * 12)
         box.set_bgcolor(hz.gfx, bg)
         box.set_border_color(hz.gfx, bd)
         box.set_border_width(hz.gfx, math.min(4, mtf_border_w + (nz(hz.conf_count) > 0 ? 1 : 0)))
@@ -3630,7 +3649,7 @@ f_mtf_draw(HtfZone hz) =>
         else
             box.set_text(hz.gfx, "")
 
-f_mtf_add(float t, float b, bool bull, string tf_str, int lvl) =>
+f_mtf_add(float t, float b, bool bull, string tf_str, int lvl, int anchor_t) =>
     if not na(t) and not na(b) and t > b
         bool merged = false
         if array.size(htf_db) > 0
@@ -3644,13 +3663,18 @@ f_mtf_add(float t, float b, bool bull, string tf_str, int lvl) =>
                         e.top        := math.max(e.top, t)
                         e.bot        := math.min(e.bot, b)
                         e.base_score := math.min(e.base_score + 10.0, 110.0)
+                        // Якорь остаётся на самом раннем баре-экстремуме
+                        if not na(anchor_t)
+                            e.left_t := na(e.left_t) or anchor_t < e.left_t ? anchor_t : e.left_t
                         merged       := true
         if not merged
-            box bx = box.new(math.max(0, bar_index - 2), t, bar_index + 12, b, xloc=xloc.bar_index,
+            int lt = f_mtf_left_t(anchor_t)
+            box bx = box.new(lt, t, time + _bar_ms * 12, b, xloc=xloc.bar_time,
                  border_color=color.new(bull ? c_mtf_sup : c_mtf_res, 0),
                  bgcolor=color.new(bull ? c_mtf_sup : c_mtf_res, mtf_transp))
             HtfZone hzn = HtfZone.new(gfx=bx, top=t, bot=b, is_bull=bull, tf=tf_str, lvl=lvl,
-                 created_at=bar_index, base_score=60.0, score=60.0,
+                 created_at=bar_index, left_t=na(anchor_t) ? time : anchor_t,
+                 base_score=60.0, score=60.0,
                  conf_count=0, full_conf=false, touched=false, active=true)
             array.push(htf_db, hzn)
     false
@@ -3743,17 +3767,17 @@ if use_mtf_zones
     if barstate.isconfirmed
         if int(nz(m1_res_id)) != m1_res_prev
             m1_res_prev := int(nz(m1_res_id))
-            f_mtf_add(m1_res_top, m1_res_bot, false, mtf_tf1, 1)
+            f_mtf_add(m1_res_top, m1_res_bot, false, mtf_tf1, 1, int(m1_res_t))
         if int(nz(m1_sup_id)) != m1_sup_prev
             m1_sup_prev := int(nz(m1_sup_id))
-            f_mtf_add(m1_sup_top, m1_sup_bot, true, mtf_tf1, 1)
+            f_mtf_add(m1_sup_top, m1_sup_bot, true, mtf_tf1, 1, int(m1_sup_t))
         if mtf_levels >= 2
             if int(nz(m2_res_id)) != m2_res_prev
                 m2_res_prev := int(nz(m2_res_id))
-                f_mtf_add(m2_res_top, m2_res_bot, false, mtf_tf2, 2)
+                f_mtf_add(m2_res_top, m2_res_bot, false, mtf_tf2, 2, int(m2_res_t))
             if int(nz(m2_sup_id)) != m2_sup_prev
                 m2_sup_prev := int(nz(m2_sup_id))
-                f_mtf_add(m2_sup_top, m2_sup_bot, true, mtf_tf2, 2)
+                f_mtf_add(m2_sup_top, m2_sup_bot, true, mtf_tf2, 2, int(m2_sup_t))
         f_mtf_cleanup()
         f_mtf_confluence()
     if array.size(htf_db) > 0
