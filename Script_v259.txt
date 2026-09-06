@@ -41,13 +41,6 @@ f_safe_append(string base, string suffix) =>
 // БЛОК 1: НАСТРОЙКИ (INPUTS)
 // ==========================================
 
-type RejectedInfo
-    int     origin_idx
-    bool    is_bull
-    float   score
-    string  reasons
-    int     created_at
-
 group_auto = "🤖 Auto-Tuner & Logic"
 tuning_mode = input.string("Auto-Adaptive", title="Режим работы", options=["Auto-Adaptive", "Manual (User Control)"], group=group_auto)
 auto_info   = input.bool(true, title="Показывать информационную панель", group=group_auto)
@@ -112,7 +105,6 @@ inp_vol_len  = input.int(40,   "Период сглаживания объема
 inp_eff_len  = input.int(5,    "Длина FER (Efficiency)",          minval=2,  maxval=20,  group=group_math)
 inp_z_min    = input.float(0.85,"Минимальный Z-Score",            minval=0.1,maxval=2.0, step=0.1, group=group_math)
 inp_z_max    = input.float(5.0, "Z-Score насыщения",              minval=1.0,maxval=10.0,step=0.1, group=group_math)
-inp_break_req= input.float(0.5, "Сила пробоя (добавка к Z)",     minval=0.1,maxval=3.0, step=0.1, group=group_math)
 
 group_smc_sup  = "🏛️ SMC Engine (Support)"
 inp_ob_len   = input.int(2, "MICRO (M1-M3) 	Cluster Size",  minval=1, maxval=12, group=group_smc_sup)
@@ -331,7 +323,6 @@ use_itf_align    = input.bool(true,  "Требовать ITF-тренд (про�
 use_mss_confirm  = input.bool(false, "Требовать MSS при входе", group=group_fut)
 min_confluence   = input.int(2, "Мин. факторов подтверждения входа", minval=1, maxval=6, group=group_fut)
 use_label_quality = input.bool(true, "Показывать Score/Tier на BUY/SELL", group=group_fut)
-use_htf_zone_align = input.bool(false,"HTF зона-алайнмент (экспериментально)", group=group_fut)
 use_major_bos    = input.bool(true,  "Major BOS фильтр (для SWING/MACRO)", group=group_fut)
 use_asset_adapt  = input.bool(true,  "Авто-адаптация к типу инструмента (crypto/fut/stock)", group=group_fut, tooltip="Корректирует ATR-множители, пороги объема и SL-паддинг под специфику инструмента: крипто, фьючерсы, акции, металлы.")
 use_pv_sizing    = input.bool(true,  "Учитывать Point Value при расчёте лота (фьючерсы)", group=group_fut, tooltip="Для фьючерсов (ES=50$/пт, GC=100$/пт) делит риск на SL*pointvalue. Для spot crypto = 1.")
@@ -683,7 +674,6 @@ if barstate.islast and auto_info
 // ==========================================
 // БЛОК 3: SESSION LOGIC & ADAPTIVE MACRO VOLUME
 // ==========================================
-int BUF_OHLCV = 4999
 int BUF_STATS = 1000
 int BUF_TREND = 800
 float global_vol_sma = ta.sma(volume, p_glob_vol_len)
@@ -1253,10 +1243,6 @@ fill(p_m, p_l, color=use_pd ? color.new(color.green, 90) : na)
 type PivotMetrics
     bool is_valid
     float strength
-    float curvature
-    float volume_factor
-    float fractal_depth    // НОВОЕ V249: фрактальная глубина
-    float isolation_score  // НОВОЕ V249: истинная изоляци
     int neighbor_count // V250: количество соседних пивотов
     float neighbor_strength // V250: суммарная сила соседних пивотов
     string debug_info
@@ -1301,7 +1287,7 @@ f_analyze_pivot_quality(int pid_idx, bool is_bull, int left_len, int right_len, 
 
     PivotMetrics res = na
     if do_calc
-        res := PivotMetrics.new(true, 50.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, "")
+        res := PivotMetrics.new(true, 50.0, 0, 0.0, "")
         if use_smart_piv
             int offset = bar_index - pid_idx
             int safe_limit = math.min(bar_index - 1, math.min(p_max_history - 1, MAX_OFFSET))
@@ -1313,7 +1299,6 @@ f_analyze_pivot_quality(int pid_idx, bool is_bull, int left_len, int right_len, 
                 res.debug_info := "Buffer Limit"
             else
                 float p_price = is_bull ? low[s_idx] : high[s_idx]
-                float p_vol   = volume[s_idx]
                 float h_atr   = _mem_atr[s_idx]
                 float loc_atr = nz(h_atr, syminfo.mintick)
 
@@ -1482,10 +1467,6 @@ f_analyze_pivot_quality(int pid_idx, bool is_bull, int left_len, int right_len, 
                 res.neighbor_count    := np_count
                 res.neighbor_strength := np_str_sum
                 res.strength        := final_sc
-                res.curvature       := curve_in_atr
-                res.volume_factor   := avg_cluster_rvol
-                res.fractal_depth   := fractal_raw
-                res.isolation_score := wick_s
                 res.is_valid        := final_sc >= min_piv_qual
                 res.debug_info      := "📐 PIVOT V250: " + str.tostring(final_sc, "#") + "/100" +
                                        "\nQC:" + str.tostring(curve_in_atr, "#.2") + " FD:" + str.tostring(fractal_raw, "#.2") +
@@ -1611,8 +1592,6 @@ f_update_health_bar(Zone z) =>
         // Позиция: внизу зоны для bull, вверху для bear (чтобы не перекрывать fib grid)
         float h_y = z.is_bull ? z.bot + (z.top - z.bot) * 0.05 : z.top - (z.top - z.bot) * 0.05
         // Длина: от created_at до created_at + (bar_index - created_at) * health_pct
-        int full_width = bar_index + 5 - z.created_at
-        int health_width = math.max(1, math.round(float(full_width) * health_pct))
         int h_x1 = math.max(z.created_at, bar_index - 25)
         int h_x2 = h_x1 + math.max(1, math.round(float(bar_index + 5 - h_x1) * health_pct))
         // Цвет: зелёный при 100% → жёлтый при 50% → красный при 0%
@@ -2209,7 +2188,6 @@ f_calc_fvg_on_candle(int impulse_idx, bool is_bull, float current_atr) =>
         float c2_o = open[o0]
         float c3_h = high[om]
         float c3_l = low[om]
-        float c3_c = close[om]
         float c3_o = open[om]
         float tol  = syminfo.mintick * 0.5
 
@@ -2408,20 +2386,6 @@ f_multi_pattern_bonus(float base_score, int condition_count) =>
         => 0.0
     base_score * bonus_pct
 
-f_calc_efficiency(int idx, int len) =>
-    // V253: ta.highest/lowest вместо ручного цикла
-    int   win   = math.min(math.max(len, 1), MAX_BUFF)
-    float h_max = ta.highest(high, win)
-    float l_min = ta.lowest(low, win)
-    if len == 0
-        0.0
-    else
-        int safe_idx  = f_clamp(idx, MAX_OFFSET)
-        int safe_back = f_clamp(idx + len, MAX_OFFSET)
-        float net_change = math.abs(close[safe_idx] - close[safe_back])
-        float approx_path = h_max - l_min
-        approx_path != 0.0 ? (net_change / approx_path) : 0.0
-
 f_get_sigmoid_score(float val, float min_v, float max_v, float weight) =>
     if na(val)
         0.0
@@ -2444,7 +2408,6 @@ f_get_log_vol_score(float val, float min_v, float max_v, float weight) =>
     float log_max  = math.log(1.0 + (max_safe - min_v))
     weight * math.min(log_val / log_max, 1.0)
 
-var array<RejectedInfo> rejected_db = array.new<RejectedInfo>()
 
 // V253: кэш для f_verify_structural_sweep
 var float[] _sweep_cache_lows  = array.new_float()
@@ -2474,9 +2437,6 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
     max_bars_back(_mem_brk,  MAX_BUFF)
     max_bars_back(_mem_atr, MAX_BUFF)
     
-    float diag_z_val = 0.0
-    float diag_v_val = 0.0
-    bool  diag_align = false
     bool  is_too_old = not na(swing_idx) and (bar_index - swing_idx > p_max_history)
 
     // V255: вынос ta.highest/ta.lowest из условного блока для серийной согласованности
@@ -2507,14 +2467,7 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
         else
             run_calc := false
 
-    if run_calc and is_too_old
-        if debug_mode
-            RejectedInfo r = RejectedInfo.new(swing_idx, is_bull, 0.0, "❌ GUARD: Too Old / History Limit", bar_index)
-            array.push(rejected_db, r)
-            while array.size(rejected_db) > 30
-                array.shift(rejected_db)
-
-    else if run_calc and not is_too_old
+    if run_calc and not is_too_old
         array<string> log_arr = na
         if debug_mode
             log_arr := array.new<string>()
@@ -2703,10 +2656,6 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
             align := is_bull ? global_bull : global_bear
             final_score += align ? w_trend_norm : 0.0
 
-            diag_z_val := z_val
-            diag_v_val := val_vol
-            diag_align := align
-
             bool is_wick_sweep   = f_check_sweep(swing_idx, is_bull)
             bool is_struct_sweep = f_verify_structural_sweep(swing_idx, is_bull)
             float s_sw = 0.0
@@ -2803,8 +2752,6 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
                 final_score += f_multi_pattern_bonus(base_score_ob, ob_cond_count)
             // V254: Гарантия что score не превышает потолок 150 после всех бонусов
             final_score := math.min(final_score, 150.0)
-            float current_step_atr = nz(_mem_atr[safe_oc], 1.0)
-            [f_sz, ft, fb, tmp_type] = f_calc_fvg_on_candle(best_impulse_idx, is_bull, current_step_atr)
 
             if use_score and final_score < p_min_score
                 if debug_mode and array.size(log_arr) > 0
@@ -2855,42 +2802,6 @@ f_cluster(int swing_idx, bool is_bull, bool do_calc, int limit_len, float hist_a
             string joined = array.join(log_arr, "\n")
             debug_log := str.length(joined) > MAX_STR_LEN ? str.substring(joined, 0, MAX_STR_LEN - TRUNCATE_SUFFIX_LEN) + TRUNCATE_SUFFIX : joined
 
-        if not fd and debug_mode
-            array<string> err_log = array.new<string>()
-            if not has_fvg and req_fvg
-                err_log.push("❌ СТРОГИЙ SMC: Нет FVG на 1-" + str.tostring(p_fvg_lookback) + " свече.")
-            else if na(best_impulse_idx)
-                err_log.push("❌ ИМПУЛЬС: Валидная инициализирующая свеча не найдена.")
-            else
-                if use_score and final_score < p_min_score
-                    float deficit = p_min_score - final_score
-                    err_log.push("📉 SCORE: " + str.tostring(final_score, "#.0") + " (Не хватает: " + str.tostring(deficit, "#.0") + ")")
-                int off_err = bar_index - best_impulse_idx
-                int safe_err = f_clamp(off_err, MAX_OFFSET)
-                float atr_err_step = nz(_mem_atr[safe_err], 1.0)
-                [f_sz_err, ft_err, fb_err, err_type] = f_calc_fvg_on_candle(best_impulse_idx, is_bull, atr_err_step)
-                float real_fvg = na(f_sz_err) ? 0.0 : f_sz_err
-                if real_fvg < dyn_fvg
-                    err_log.push("📏 GAP: " + str.tostring(real_fvg, "#.######") + " ATR < Мин. " + str.tostring(dyn_fvg, "#.######") + " ATR")
-                if diag_z_val < dyn_z
-                    err_log.push("📉 Z-SCORE: " + str.tostring(diag_z_val, "#.######") + "σ")
-                if use_trend and not diag_align
-                    err_log.push("⚖️ СТРУКТУРА: Вектор контр-тренда.")
-                if use_vol_flt and diag_v_val < dyn_v
-                    err_log.push("🔇 ОБЪЕМ: RVOL " + str.tostring(diag_v_val, "#.######") + " (Нужно: " + str.tostring(dyn_v, "#.######") + ")")
-            if array.size(err_log) == 0
-                if ext_reason != ""
-                    err_log.push("🛡️ ОРКЕСТРАТОР: " + ext_reason)
-                else if not run_calc
-                    err_log.push("❌ GUARD: Длина хвоста (< " + str.tostring(inp_wick_rat*100) + "%)")
-                else
-                    err_log.push("❌ АНОМАЛИЯ: Математический отказ фильтра.")
-            string reasons = array.join(err_log, "\n")
-            RejectedInfo r = RejectedInfo.new(swing_idx, is_bull, final_score, reasons, bar_index)
-            array.push(rejected_db, r)
-            while array.size(rejected_db) > 30
-                array.shift(rejected_db)
-
     [o_t, o_b, fd, bx, final_score, tier_res, sniper_lvl, idm_lvl, debug_log, final_fvg_type]
 
 // ==========================================
@@ -2912,13 +2823,6 @@ f_delete_zone_graphics(Zone z) =>
         label.delete(array.pop(z.fvg_labels))
     // V249: удаляем визуальные эффекты
     f_delete_zone_visuals(z)
-
-f_remove_old_rejected() =>
-    if debug_mode and array.size(rejected_db) > 0
-        for i = array.size(rejected_db) - 1 to 0
-            RejectedInfo r = array.get(rejected_db, i)
-            if (bar_index - r.origin_idx > p_max_history)
-                array.remove(rejected_db, i)
 
 f_calc_zone_validity(Zone z) =>
     float dist = na(z.bot) or na(z.top) or na(close) ? na :
@@ -3285,9 +3189,6 @@ f_create_new_zones() =>
     
     bool allow        = (not use_adx or not global_flat)
     bool confirmed_bar = barstate.isconfirmed
-    float mu_v   = _sf_mu
-    float sig_v  = _sf_sig
-    float eta_v  = _sf_eta
     float prob_v = _sf_prob
     int   samp_n = _sf_n
     float discount = 0.0
@@ -3637,9 +3538,6 @@ f_mng() =>
     float g_prev_low   = nz(low[1])
     float g_prev_high  = nz(high[1])
 
-    if is_closed
-        f_remove_old_rejected()
-
     // V255: безусловный вызов для серийной согласованности (trigger_bb series loop)
     f_handle_zone_removal(_dummy_z, false, false, false, false, 0, false)
 
@@ -3876,27 +3774,12 @@ f_mng()
 bool trigger_buy  = false
 bool trigger_sell = false
 
-float d_mu   = _sf_mu
-float d_sig  = _sf_sig
-float d_eta  = _sf_eta
 float d_prob = _sf_prob
 int   d_n    = _sf_n
 float d_discount = 0.0
 if d_n >= stoch_min_val and d_prob > 80.0
     d_discount := math.min(0.25, (d_prob - 80.0) / 19.9 * 0.25)
 
-f_pinbar(bool is_bull) =>
-    float candle_range = high - low
-    float body  = math.abs(close - open)
-    float upper = high - math.max(close, open)
-    float lower = math.min(close, open) - low
-    bool  is_pin = false
-    if candle_range > 0
-        if is_bull
-            is_pin := (lower > body * inp_pin_ratio) and (upper < body)
-        else
-            is_pin := (upper > body * inp_pin_ratio) and (lower < body)
-    is_pin
 // ── V254: Подсчёт пин-баров в окне lookback рядом с зоной ────────────────
 // Сканирует последние `lookback` свечей и считает количество пин-баров
 // в направлении `is_bull`. Для подтверждения зоны требуется ≥ inp_min_pinbars.
@@ -4140,7 +4023,6 @@ if array.size(zone_db) > 0 and is_actionable_bar
                                 entry_comment := "⚡ ChoCh Confirm"
 
                     if do_trade
-                        string fvg_out   = (z.fvg_type != "None" and z.fvg_type != "") ? z.fvg_type : "No Gap"
                         string msg_entry = '{"action":"' + (z.is_bull ? "BUY" : "SELL") +
                              '","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period +
                              '","entry":' + str.tostring(en_price, format.mintick) +
@@ -4600,116 +4482,3 @@ if barstate.islast and show_dash
              text_color=use_asset_adapt ? color.lime : color.gray, text_size=t_sz)
 else
     table.clear(dash, 0, 0, 1, 24)
-
-// ── DEBUG TABLE ───────────────────────────────────────────────────────────
-var table debug_table = na
-if barstate.islast and debug_mode
-    if na(debug_table)
-        debug_table := table.new(position.bottom_center, 10, 20,
-             bgcolor=color.new(color.black, 85), border_width=1,
-             frame_color=color.new(color.white, 80), frame_width=1)
-    table.clear(debug_table, 0, 0, 9, 19)
-    int row = 0
-
-    string bos_b_stat = "Wait Pivot..."
-    if not na(pd_high)
-        float delta_b = (pd_high - close) / syminfo.mintick
-        bos_b_stat := delta_b <= 0 ? "⚡ BREAK! (" + str.tostring(pd_high, format.mintick) + ")" :
-             "Target: " + str.tostring(pd_high, format.mintick) + " (Δ: " + str.tostring(delta_b,"#") + " tks)"
-
-    string bos_s_stat = "Wait Pivot..."
-    if not na(pd_low)
-        float delta_s = (close - pd_low) / syminfo.mintick
-        bos_s_stat := delta_s <= 0 ? "⚡ BREAK! (" + str.tostring(pd_low, format.mintick) + ")" :
-             "Target: " + str.tostring(pd_low, format.mintick) + " (Δ: " + str.tostring(delta_s,"#") + " tks)"
-
-    string prob_txt = "Wait Data (" + str.tostring(d_n) + "/" + str.tostring(stoch_min_val) + " zones)..."
-    color  prob_col = color.gray
-    if d_n >= stoch_min_val
-        string eta_str  = d_eta <= 0 ? "OVERDUE" : str.tostring(d_eta,"#.0") + "b"
-        string disc_str = d_discount > 0 ? " | γ-Discount: -" + str.tostring(d_discount*100,"#.0") + "%" : ""
-        prob_txt := "ETA: " + eta_str + " | Prob: " + str.tostring(d_prob,"#.1") + "% (μ=" + str.tostring(d_mu,"#") + ", σ=" + str.tostring(d_sig,"#") + ")" + disc_str
-        prob_col := d_prob >= 90.0 ? color.new(color.fuchsia,0) : d_prob > 60.0 ? color.new(color.orange,0) : color.new(color.teal,0)
-
-    table.cell(debug_table, 0, row, "BULL: " + bos_b_stat + "  | BEAR: " + bos_s_stat,
-         text_color=color.yellow, bgcolor=color.new(color.blue,60), text_size=size.small)
-    table.merge_cells(debug_table, 0, row, 4, row)
-    table.cell(debug_table, 5, row, "⏳ STOCHASTIC: " + prob_txt,
-         text_color=color.white, bgcolor=prob_col, text_size=size.small)
-    table.merge_cells(debug_table, 5, row, 9, row)
-    row += 1
-
-    int cnt_active = array.size(zone_db) 
-    int cnt_rej = array.size(rejected_db)
-    table.cell(debug_table, 0, row, "🟢 ACTIVE ZONES (" + str.tostring(cnt_active) + ")",
-         text_color=color.lime, bgcolor=color.new(color.green,90), width=48)
-    table.merge_cells(debug_table, 0, row, 4, row)
-    table.cell(debug_table, 5, row, "🔴 REJECTED (" + str.tostring(cnt_rej) + ")",
-         text_color=color.red, bgcolor=color.new(color.red,90), width=48)
-    table.merge_cells(debug_table, 5, row, 9, row)
-    row += 1
-
-    table.cell(debug_table, 0, row, "ID",    width=4,  bgcolor=color.new(color.gray,80), text_color=color.white, text_size=size.small)
-    table.cell(debug_table, 1, row, "Type",  width=5,  bgcolor=color.new(color.gray,80), text_color=color.white, text_size=size.small)
-    table.cell(debug_table, 2, row, "Score", width=6,  bgcolor=color.new(color.gray,80), text_color=color.white, text_size=size.small)
-    table.cell(debug_table, 3, row, "State", width=8,  bgcolor=color.new(color.gray,80), text_color=color.white, text_size=size.small)
-    table.cell(debug_table, 4, row, "Info",  width=26, bgcolor=color.new(color.gray,80), text_color=color.white, text_size=size.small)
-    table.cell(debug_table, 5, row, "ID",    width=4,  bgcolor=color.new(color.gray,80), text_color=color.silver, text_size=size.small)
-    table.cell(debug_table, 6, row, "Type",  width=5,  bgcolor=color.new(color.gray,80), text_color=color.silver, text_size=size.small)
-    table.cell(debug_table, 7, row, "Score", width=5,  bgcolor=color.new(color.gray,80), text_color=color.silver, text_size=size.small)
-    table.cell(debug_table, 8, row, "Age",   width=4,  bgcolor=color.new(color.gray,80), text_color=color.silver, text_size=size.small)
-    table.cell(debug_table, 9, row, "Root Cause", width=30, bgcolor=color.new(color.gray,80), text_color=color.silver, text_size=size.small)
-    row += 1
-
-    int ROWS_TO_SHOW = 10
-    int loops = math.max(math.min(cnt_active, ROWS_TO_SHOW), math.min(cnt_rej, ROWS_TO_SHOW))
-    if loops == 0
-        table.cell(debug_table, 0, row, "No Data Available", text_color=color.gray)
-        table.merge_cells(debug_table, 0, row, 9, row)
-    else
-        for i = 0 to loops - 1
-            if i < cnt_active
-                Zone z = array.get(zone_db, i)
-                color bg_a = z.active ? (z.z_type == "BB" ? color.new(color.blue,75) : (z.is_bull ? color.new(color.green,82) : color.new(color.red,82))) : color.new(color.gray,80)
-                table.cell(debug_table, 0, row, str.tostring(z.origin_idx), bgcolor=bg_a, text_color=color.white, text_size=size.small)
-                string fvg_abbr = z.fvg_type == "Classic FVG" ? " (CF)" : z.fvg_type == "Vol Imbalance" ? " (VI)" : z.fvg_type == "Marubozu" ? " (MB)" : z.fvg_type == "Open-Open Imb" ? " (OO)" : ""
-                string t_icon = (z.z_type == "BB" ? "🛡️BB" : z.z_type == "RZ" ? (z.is_bull ? "🟡RZ↑" : "🟠RZ↓") : (z.is_bull ? "SUP" : "RES")) + fvg_abbr
-                table.cell(debug_table, 1, row, t_icon, bgcolor=bg_a, text_color=color.white, text_size=size.small)
-                color sc_col = z.score >= 100 ? color.fuchsia : z.score >= 80 ? color.lime : z.score >= 50 ? color.yellow : color.orange
-                string score_disp = str.tostring(z.score,"#.0") + (z.absorbed_count > 0 ? "⊕" + str.tostring(z.absorbed_count) : "")
-                table.cell(debug_table, 2, row, score_disp, bgcolor=bg_a, text_color=sc_col, text_size=size.small)
-                string st_txt = z.mitigated ? "DONE" : z.pending_break ? "PENDING" : "LIVE"
-                table.cell(debug_table, 3, row, st_txt, bgcolor=bg_a, text_color=color.white, text_size=size.small)
-                string det_txt = "Stg:" + str.tostring(z.sniper_stage) + (z.debug_log != "" ? " 📝" : "")
-                table.cell(debug_table, 4, row, det_txt, bgcolor=bg_a, text_color=color.white, text_size=size.small, text_halign=text.align_left, tooltip=z.debug_log)
-            else
-                if i < loops
-                    table.cell(debug_table, 0, row, "", bgcolor=color.new(color.black,100))
-                    table.merge_cells(debug_table, 0, row, 4, row)
-
-            int rej_idx = cnt_rej - 1 - i
-            if rej_idx >= 0
-                RejectedInfo r = array.get(rejected_db, rej_idx)
-                color bg_r = color.new(color.maroon,85)
-                string[] split_reasons = str.split(r.reasons, "\n")
-                string preview_reason  = array.size(split_reasons) > 0 ? array.get(split_reasons,0) : "Unknown"
-                color prev_col = str.contains(preview_reason,"ОРКЕСТРАТОР") ? color.fuchsia :
-                                 str.contains(preview_reason,"Z-SCORE") or str.contains(preview_reason,"ОБЪЕМ") ? color.orange :
-                                 str.contains(preview_reason,"GAP") ? color.yellow : color.silver
-                if str.length(preview_reason) > 30
-                    preview_reason := str.substring(preview_reason,0,27) + "..."
-                table.cell(debug_table, 5, row, str.tostring(r.origin_idx), bgcolor=bg_r, text_color=color.silver, text_size=size.small)
-                table.cell(debug_table, 6, row, r.is_bull ? "B-REJ" : "S-REJ", bgcolor=bg_r, text_color=color.silver, text_size=size.small)
-                table.cell(debug_table, 7, row, str.tostring(r.score,"#.0"), bgcolor=bg_r, text_color=color.orange, text_size=size.small)
-                table.cell(debug_table, 8, row, str.tostring(bar_index - r.created_at) + "b", bgcolor=bg_r, text_color=color.silver, text_size=size.small)
-                table.cell(debug_table, 9, row, preview_reason, bgcolor=bg_r, text_color=prev_col, text_size=size.small, text_halign=text.align_left, tooltip=r.reasons)
-            else
-                if i < loops
-                    table.cell(debug_table, 5, row, "", bgcolor=color.new(color.black,100))
-                    table.merge_cells(debug_table, 5, row, 9, row)
-            row += 1
-
-if not debug_mode and not na(debug_table)
-    table.clear(debug_table, 0, 0)
-    debug_table := na
-    array.clear(rejected_db)
