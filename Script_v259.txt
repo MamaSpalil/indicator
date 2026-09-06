@@ -97,14 +97,14 @@ use_date   = input.bool(false, "Включить фильтр по датам", 
 t_start    = input.time(timestamp("01 Jan 2024 00:00 UTC"), "Начало периода", group=group_bt)
 t_end      = input.time(timestamp("01 Jan 2030 00:00 UTC"), "Конец периода",  group=group_bt)
 
-group_mtf  = "🌐 Structure & Trend"
-use_auto_htf   = input.bool(true,  "Автоматический выбор HTF", group=group_mtf)
-man_htf        = input.timeframe("60", "Ручной HTF", group=group_mtf)
-inp_struc_major= input.int(200, "Major Structure Lookback", minval=10, maxval=200, group=group_mtf)
-inp_pivot_left = input.int(25, "Minor Structure: Левое плечо (Вес)",  minval=1, maxval=50, group=group_mtf)
-inp_pivot_right= input.int(3,  "Minor Structure: Правое плечо (Подтверждение)", minval=1, maxval=50, group=group_mtf)
-use_trend   = input.bool(true,  "Фильтр по тренду (EMA)", group=group_mtf)
-inp_ema_len = input.int(200,  "Период EMA", minval=10, maxval=200, group=group_mtf)
+group_mtf1  = "🌐 Structure & Trend"
+use_auto_htf   = input.bool(true,  "Автоматический выбор HTF", group=group_mtf1)
+man_htf        = input.timeframe("60", "Ручной HTF", group=group_mtf1)
+inp_struc_major= input.int(200, "Major Structure Lookback", minval=10, maxval=200, group=group_mtf1)
+inp_pivot_left = input.int(25, "Minor Structure: Левое плечо (Вес)",  minval=1, maxval=50, group=group_mtf1)
+inp_pivot_right= input.int(3,  "Minor Structure: Правое плечо (Подтверждение)", minval=1, maxval=50, group=group_mtf1)
+use_trend   = input.bool(true,  "Фильтр по тренду (EMA)", group=group_mtf1)
+inp_ema_len = input.int(200,  "Период EMA", minval=10, maxval=200, group=group_mtf1)
 
 group_math = "🧮 MathGuard Core"
 inp_z_len    = input.int(100,  "Период расчёта Z-Score",          minval=20, maxval=300, group=group_math)
@@ -4372,8 +4372,7 @@ if barstate.islast
 
             // ── 4. Уровни входа / стопа / ориентировочных выходов ──────────
             float en_p  = close
-            float sl_p  = is_long ? (hz.bot - atr_val * sl_pad * final_pad_mult) :
-                                    (hz.top + atr_val * sl_pad * final_pad_mult)
+            float sl_p  = (is_long ? (hz.bot - atr_val * sl_pad * final_pad_mult) : (hz.top + atr_val * sl_pad * final_pad_mult)) 
             float h_risk  = math.max(math.abs(en_p - sl_p), syminfo.mintick)
             float m_tp1 = target_mode == "Fibonacci Extensions" ? fib_tp1 : part_ratio
             float m_tp2 = target_mode == "Fibonacci Extensions" ? fib_tp2 : inp_tp_ratio
