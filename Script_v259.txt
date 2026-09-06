@@ -4023,16 +4023,8 @@ if array.size(zone_db) > 0 and is_actionable_bar
                                 entry_comment := "⚡ ChoCh Confirm"
 
                     if do_trade
-                        string msg_entry = '{"action":"' + (z.is_bull ? "BUY" : "SELL") +
-                             '","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period +
-                             '","entry":' + str.tostring(en_price, format.mintick) +
-                             ',"sl":' + str.tostring(sl_price, format.mintick) +
-                             ',"tp1":' + str.tostring(tp1, format.mintick) +
-                             ',"tp2":' + str.tostring(tp2, format.mintick) +
-                             ',"tier":"' + z.tier + '","score":' + str.tostring(z.score, "#.1") +
-                             ',"fvg":"' + fvg_out + '","trigger":"' + entry_comment +
-                             '","prob":' + str.tostring(d_prob, "#.1") +
-                             ',"asset":"' + asset_label + '"}'
+						string fvg_out   = (z.fvg_type != "None" and z.fvg_type != "") ? z.fvg_type : "No Gap"
+                        string msg_entry = '{"action":"' + (z.is_bull ? "BUY" : "SELL") +  '","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period + '","entry":' + str.tostring(en_price, format.mintick) + ',"sl":' + str.tostring(sl_price, format.mintick) + ',"tp1":' + str.tostring(tp1, format.mintick) + ',"tp2":' + str.tostring(tp2, format.mintick) + ',"tier":"' + z.tier + '","score":' + str.tostring(z.score, "#.1") + ',"fvg":"' + fvg_out + '","trigger":"' + entry_comment + '","prob":' + str.tostring(d_prob, "#.1") + ',"asset":"' + asset_label + '"}'
                         string msg_exit1 = '{"action":"EXIT_TP1","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period + '"}'
                         string msg_exit2 = '{"action":"EXIT_TP2","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period + '"}'
                         string comm_suf  = " (Lvl " + str.tostring(z.sniper_stage) + ")"
